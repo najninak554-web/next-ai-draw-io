@@ -12,7 +12,6 @@ import {
 import { useDiagram } from "@/contexts/diagram-context"
 import { type DrawioTheme, isDrawioTheme } from "@/lib/drawio-themes"
 import { i18n, type Locale } from "@/lib/i18n/config"
-import { isIndexedDBUsable } from "@/lib/session-storage"
 
 export default function Home() {
     const {
@@ -33,8 +32,6 @@ export default function Home() {
     const [isLoaded, setIsLoaded] = useState(false)
     const [isDrawioReady, setIsDrawioReady] = useState(false)
     const [isElectron, setIsElectron] = useState(false)
-    const [canPersist, setCanPersist] = useState(false)
-    const [canPersistChecked, setCanPersistChecked] = useState(false)
     const [drawioBaseUrl, setDrawioBaseUrl] = useState(
         process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || "https://embed.diagrams.net",
     )
@@ -85,11 +82,6 @@ export default function Home() {
             setDrawioBaseUrl(`${window.location.origin}/drawio/index.html`)
         }
 
-        void (async () => {
-            const usable = await isIndexedDBUsable()
-            setCanPersist(usable)
-            setCanPersistChecked(true)
-        })()
         setIsLoaded(true)
     }, [pathname, router])
 
@@ -97,13 +89,6 @@ export default function Home() {
         setIsDrawioReady(true)
         onDrawioLoad()
     }, [onDrawioLoad])
-
-    const handleDrawioAutoSave = useCallback(
-        (data: { xml?: string }) => {
-            handleDiagramAutoSave(data)
-        },
-        [handleDiagramAutoSave],
-    )
 
     const handleDarkModeChange = () => {
         const newValue = !darkMode
@@ -187,7 +172,7 @@ export default function Home() {
                         }`}
                     >
                         <div className="h-full rounded-xl overflow-hidden shadow-soft-lg border border-border/30 relative">
-                            {isLoaded && canPersistChecked && (
+                            {isLoaded && (
                                 <div
                                     className={`h-full w-full ${isDrawioReady ? "" : "invisible absolute inset-0"}`}
                                 >
@@ -195,24 +180,14 @@ export default function Home() {
                                         key={`${drawioUi}-${darkMode}-${currentLang}-${isElectron}`}
                                         ref={drawioRef}
                                         autosave
-                                        onAutoSave={handleDrawioAutoSave}
+                                        onAutoSave={handleDiagramAutoSave}
                                         onExport={handleDiagramExport}
                                         onLoad={handleDrawioLoad}
                                         baseUrl={drawioBaseUrl}
-                                        configuration={
-                                            canPersist
-                                                ? { confirmExit: false }
-                                                : undefined
-                                        }
                                         urlParameters={{
                                             ui: drawioUi,
                                             spin: false,
                                             libraries: false,
-                                            // Disable modified tracking only when persistence is available
-                                            ...(canPersist && {
-                                                modified: false,
-                                                keepmodified: false,
-                                            }),
                                             saveAndExit: false,
                                             noSaveBtn: true,
                                             noExitBtn: true,
