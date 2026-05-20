@@ -60,6 +60,13 @@ export function createWindow(serverUrl: string): BrowserWindow {
         mainWindow.webContents.openDevTools()
     }
 
+    // Override the draw.io iframe's beforeunload handler so the window can
+    // close after the user edits text in a shape (fixes #815). Diagrams are
+    // already persisted via autosave, so the prompt is unnecessary.
+    mainWindow.webContents.on("will-prevent-unload", (event) => {
+        event.preventDefault()
+    })
+
     mainWindow.on("closed", () => {
         mainWindow = null
     })
