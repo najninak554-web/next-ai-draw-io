@@ -1,7 +1,7 @@
 import { extract } from "@extractus/article-extractor"
 import { NextResponse } from "next/server"
 import TurndownService from "turndown"
-import { allowPrivateUrls, isPrivateUrl } from "@/lib/ssrf-protection"
+import { isPrivateUrl } from "@/lib/ssrf-protection"
 
 const MAX_CONTENT_LENGTH = 150000 // Match PDF limit
 const EXTRACT_TIMEOUT_MS = 15000
@@ -28,8 +28,10 @@ export async function POST(req: Request) {
             )
         }
 
-        // SSRF protection
-        if (!allowPrivateUrls && isPrivateUrl(url)) {
+        // SSRF protection: parse-url has no use case for fetching internal
+        // hosts, so private URLs are always rejected. ALLOW_PRIVATE_URLS only
+        // governs LLM provider baseUrl overrides (validate-model, chat).
+        if (isPrivateUrl(url)) {
             return NextResponse.json(
                 { error: "Cannot access private/internal URLs" },
                 { status: 400 },

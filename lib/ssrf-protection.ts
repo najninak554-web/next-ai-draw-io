@@ -9,7 +9,9 @@
 export function isPrivateUrl(urlString: string): boolean {
     try {
         const url = new URL(urlString)
-        const hostname = url.hostname.toLowerCase()
+        // Strip a trailing dot so FQDN forms like "localhost." (which still
+        // resolve to 127.0.0.1) cannot bypass the equality checks below.
+        const hostname = url.hostname.toLowerCase().replace(/\.$/, "")
 
         // Block localhost
         if (
