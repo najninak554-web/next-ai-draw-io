@@ -190,176 +190,202 @@ export const PROVIDER_INFO: Record<
 // Suggested models per provider for quick add
 export const SUGGESTED_MODELS: Partial<Record<ProviderName, string[]>> = {
     openai: [
-        "gpt-5.2-pro",
-        "gpt-5.2-chat-latest",
-        "gpt-5.2",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-codex",
-        "gpt-5.1-chat-latest",
-        "gpt-5.1",
-        "gpt-5-pro",
-        "gpt-5",
-        "gpt-5-mini",
-        "gpt-5-nano",
-        "gpt-5-codex",
-        "gpt-5-chat-latest",
+        "gpt-5.5-pro",
+        "gpt-5.5",
+        "gpt-5.4-pro",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "gpt-5-codex-mini",
         "gpt-4.1",
         "gpt-4.1-mini",
-        "gpt-4.1-nano",
         "gpt-4o",
         "gpt-4o-mini",
     ],
     anthropic: [
-        // Claude 4.5 series (latest)
-        "claude-opus-4-5-20250514",
-        "claude-sonnet-4-5-20250514",
-        // Claude 4 series
-        "claude-opus-4-20250514",
-        "claude-sonnet-4-20250514",
+        // Claude 4.8 / 4.7 / 4.6 series (latest, dateless pinned IDs)
+        "claude-opus-4-8",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        // Claude 4.5 series
+        "claude-sonnet-4-5-20250929",
+        "claude-opus-4-5-20251101",
         // Claude 3.7 series
         "claude-3-7-sonnet-20250219",
         // Claude 3.5 series
         "claude-3-5-sonnet-20241022",
         "claude-3-5-haiku-20241022",
-        // Claude 3 series
-        "claude-3-opus-20240229",
-        "claude-3-sonnet-20240229",
-        "claude-3-haiku-20240307",
     ],
     google: [
+        // Gemini 3 series
+        "gemini-3.1-pro",
+        "gemini-3.5-flash",
+        "gemini-3-flash",
+        "gemini-3.1-flash-lite",
         // Gemini 2.5 series
         "gemini-2.5-pro",
         "gemini-2.5-flash",
-        "gemini-2.5-flash-preview-05-20",
-        // Gemini 2.0 series
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-exp",
-        "gemini-2.0-flash-lite",
-        // Gemini 1.5 series
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        // Legacy
-        "gemini-pro",
+        "gemini-2.5-flash-lite",
     ],
     vertexai: [
+        // Gemini 3 series
+        "gemini-3.1-pro-preview",
+        "gemini-3.5-flash",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
         // Gemini 2.5 series
         "gemini-2.5-pro",
         "gemini-2.5-flash",
-        // Gemini 2.0 series
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-exp",
-        // Gemini 1.5 series
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
+        "gemini-2.5-flash-lite",
     ],
-    azure: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-35-turbo"],
+    azure: [
+        "gpt-5.5",
+        "gpt-5.4",
+        "gpt-5.1",
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-4.1",
+        "gpt-4o",
+        "gpt-4o-mini",
+        "o3",
+        "o4-mini",
+    ],
     bedrock: [
         // Anthropic Claude
-        "anthropic.claude-opus-4-5-20250514-v1:0",
-        "anthropic.claude-sonnet-4-5-20250514-v1:0",
+        "anthropic.claude-opus-4-8",
+        "anthropic.claude-opus-4-7",
+        "anthropic.claude-sonnet-4-6",
+        "anthropic.claude-opus-4-6-v1",
+        "anthropic.claude-opus-4-5-20251101-v1:0",
+        "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "anthropic.claude-haiku-4-5-20251001-v1:0",
+        "anthropic.claude-opus-4-1-20250805-v1:0",
         "anthropic.claude-opus-4-20250514-v1:0",
         "anthropic.claude-sonnet-4-20250514-v1:0",
-        "anthropic.claude-3-7-sonnet-20250219-v1:0",
-        "anthropic.claude-3-5-sonnet-20241022-v2:0",
         "anthropic.claude-3-5-haiku-20241022-v1:0",
-        "anthropic.claude-3-opus-20240229-v1:0",
-        "anthropic.claude-3-sonnet-20240229-v1:0",
-        "anthropic.claude-3-haiku-20240307-v1:0",
         // Amazon Nova
+        "amazon.nova-2-lite-v1:0",
+        "amazon.nova-premier-v1:0",
         "amazon.nova-pro-v1:0",
         "amazon.nova-lite-v1:0",
         "amazon.nova-micro-v1:0",
         // Meta Llama
+        "meta.llama4-maverick-17b-instruct-v1:0",
+        "meta.llama4-scout-17b-instruct-v1:0",
         "meta.llama3-3-70b-instruct-v1:0",
-        "meta.llama3-1-405b-instruct-v1:0",
-        "meta.llama3-1-70b-instruct-v1:0",
         // Mistral
-        "mistral.mistral-large-2411-v1:0",
-        "mistral.mistral-small-2503-v1:0",
+        "mistral.mistral-large-3-675b-instruct",
+        "mistral.pixtral-large-2502-v1:0",
     ],
     openrouter: [
         // Anthropic
-        "anthropic/claude-sonnet-4",
-        "anthropic/claude-opus-4",
-        "anthropic/claude-3.5-sonnet",
-        "anthropic/claude-3.5-haiku",
+        "anthropic/claude-opus-4.8",
+        "anthropic/claude-sonnet-4.6",
+        "anthropic/claude-haiku-4.5",
         // OpenAI
-        "openai/gpt-4o",
+        "openai/gpt-5.5",
+        "openai/gpt-5.4",
+        "openai/gpt-5.4-mini",
         "openai/gpt-4o-mini",
-        "openai/o1",
-        "openai/o3-mini",
         // Google
-        "google/gemini-2.5-pro",
-        "google/gemini-2.5-flash",
-        "google/gemini-2.0-flash-exp:free",
+        "google/gemini-3.1-pro-preview",
+        "google/gemini-3.5-flash",
+        "google/gemini-2.5-flash-lite",
+        // xAI
+        "x-ai/grok-4.3",
         // Meta Llama
+        "meta-llama/llama-4-maverick",
+        "meta-llama/llama-4-scout",
         "meta-llama/llama-3.3-70b-instruct",
-        "meta-llama/llama-3.1-405b-instruct",
-        "meta-llama/llama-3.1-70b-instruct",
         // DeepSeek
-        "deepseek/deepseek-chat",
-        "deepseek/deepseek-r1",
+        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v3.2",
         // Qwen
-        "qwen/qwen-2.5-72b-instruct",
+        "qwen/qwen3.7-max",
+        "qwen/qwen3-coder",
+        // MiniMax
+        "minimax/minimax-m3",
     ],
-    deepseek: ["deepseek-chat", "deepseek-reasoner", "deepseek-coder"],
+    deepseek: [
+        "deepseek-v4-pro",
+        "deepseek-v4-flash",
+        "deepseek-chat",
+        "deepseek-reasoner",
+    ],
     siliconflow: [
         // DeepSeek
-        "deepseek-ai/DeepSeek-V3",
-        "deepseek-ai/DeepSeek-R1",
-        "deepseek-ai/DeepSeek-V2.5",
+        "deepseek-ai/DeepSeek-V4-Pro",
+        "deepseek-ai/DeepSeek-V4-Flash",
+        "deepseek-ai/DeepSeek-V3.2",
+        // MiniMax
+        "MiniMaxAI/MiniMax-M3",
+        // Moonshot
+        "moonshotai/Kimi-K2.6",
+        // Z.ai
+        "zai-org/GLM-5",
         // Qwen
-        "Qwen/Qwen2.5-72B-Instruct",
-        "Qwen/Qwen2.5-32B-Instruct",
-        "Qwen/Qwen2.5-Coder-32B-Instruct",
-        "Qwen/Qwen2.5-7B-Instruct",
-        "Qwen/Qwen2-VL-72B-Instruct",
-        "qwen3.5-plus",
+        "Qwen/Qwen3.6-35B-A3B",
+        "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "Qwen/Qwen3-30B-A3B-Instruct-2507",
+        "Qwen/Qwen3-VL-32B-Instruct",
+        // OpenAI open-weights
+        "openai/gpt-oss-120b",
     ],
     sglang: [
         // SGLang is OpenAI-compatible, models depend on deployment
         "default",
     ],
     gateway: [
-        "openai/gpt-4o",
-        "openai/gpt-4o-mini",
-        "anthropic/claude-sonnet-4-5",
-        "anthropic/claude-3-5-sonnet",
-        "google/gemini-2.0-flash",
+        "openai/gpt-5.5",
+        "anthropic/claude-opus-4.7",
+        "google/gemini-3.1-pro-preview",
+        "xai/grok-4.3",
+        "anthropic/claude-sonnet-4.6",
+        "anthropic/claude-haiku-4.5",
+        "openai/gpt-5.4-mini",
     ],
     edgeone: ["@tx/deepseek-ai/deepseek-v32"],
     doubao: [
-        // ByteDance Doubao models
-        "doubao-1.5-thinking-pro-250415",
-        "doubao-1.5-thinking-pro-m-250428",
-        "doubao-1.5-pro-32k-250115",
-        "doubao-1.5-pro-256k-250115",
-        "doubao-pro-32k-241215",
-        "doubao-pro-256k-241215",
+        // ByteDance Doubao models (Volcengine Ark IDs use dash form)
+        "doubao-seed-2-0-pro-260215",
+        "doubao-seed-2-0-lite-260428",
+        "doubao-seed-2-0-mini-260428",
+        "doubao-seed-1-8-251228",
+        "doubao-seed-1-6-251015",
+        "doubao-seed-1-6-flash-250828",
+        "doubao-seed-1-6-vision-250815",
+        "doubao-1-5-pro-32k-250115",
+        "doubao-1-5-lite-32k-250115",
     ],
     modelscope: [
+        // DeepSeek
+        "deepseek-ai/DeepSeek-V4-Pro",
+        "deepseek-ai/DeepSeek-V3.2",
+        "deepseek-ai/DeepSeek-R1-0528",
+        "deepseek-ai/DeepSeek-R1",
         // Qwen
-        "Qwen/Qwen2.5-72B-Instruct",
-        "Qwen/Qwen2.5-32B-Instruct",
         "Qwen/Qwen3-235B-A22B-Instruct-2507",
         "Qwen/Qwen3-VL-235B-A22B-Instruct",
+        "Qwen/Qwen3-Coder-30B-A3B-Instruct",
         "Qwen/Qwen3-32B",
-        "qwen3.5-plus",
-        // DeepSeek
-        "deepseek-ai/DeepSeek-R1-0528",
-        "deepseek-ai/DeepSeek-V3.2",
+        "Qwen/Qwen2.5-72B-Instruct",
     ],
     minimax: [
         // MiniMax models (Anthropic-compatible API)
         "MiniMax-M3",
         "MiniMax-M2.7",
         "MiniMax-M2.7-highspeed",
+        "MiniMax-M2.5",
     ],
     novita: [
         // Novita AI models (OpenAI-compatible API)
-        "moonshotai/kimi-k2.5",
-        "zai-org/glm-5",
-        "minimax/minimax-m2.5",
+        "minimax/minimax-m3",
+        "deepseek/deepseek-v4-pro",
+        "zai-org/glm-5.1",
+        "moonshotai/kimi-k2.6",
+        "deepseek/deepseek-v4-flash",
     ],
 }
 
