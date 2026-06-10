@@ -76,6 +76,30 @@ export const SETTING_GROUPS: SettingGroup[] = [
     },
 ]
 
+// Provider name for each subgroup in the providers group (for logos)
+export const SUBGROUP_PROVIDERS: Record<string, string> = {
+    "AWS Bedrock": "bedrock",
+    OpenAI: "openai",
+    Anthropic: "anthropic",
+    Google: "google",
+    "Vertex AI": "vertexai",
+    "Azure OpenAI": "azure",
+    Ollama: "ollama",
+    OpenRouter: "openrouter",
+    DeepSeek: "deepseek",
+    SiliconFlow: "siliconflow",
+    SGLang: "sglang",
+    "Vercel AI Gateway": "gateway",
+    Doubao: "doubao",
+    ModelScope: "modelscope",
+    GLM: "glm",
+    Qwen: "qwen",
+    Kimi: "kimi",
+    Qiniu: "qiniu",
+    MiniMax: "minimax",
+    Novita: "novita",
+}
+
 const PROVIDER_OPTIONS = [
     "bedrock",
     "openai",

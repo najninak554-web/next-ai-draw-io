@@ -5,7 +5,6 @@ import {
     Check,
     ChevronRight,
     Clock,
-    Cloud,
     Eye,
     EyeOff,
     Key,
@@ -21,6 +20,7 @@ import {
     Zap,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { ProviderLogo } from "@/components/provider-logo"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -54,11 +54,7 @@ import { useDictionary } from "@/hooks/use-dictionary"
 import type { UseModelConfigReturn } from "@/hooks/use-model-config"
 import { formatMessage } from "@/lib/i18n/utils"
 import type { ProviderConfig, ProviderName } from "@/lib/types/model-config"
-import {
-    PROVIDER_INFO,
-    PROVIDER_LOGO_MAP,
-    SUGGESTED_MODELS,
-} from "@/lib/types/model-config"
+import { PROVIDER_INFO, SUGGESTED_MODELS } from "@/lib/types/model-config"
 import { cn } from "@/lib/utils"
 
 interface ModelConfigDialogProps {
@@ -68,38 +64,6 @@ interface ModelConfigDialogProps {
 }
 
 type ValidationStatus = "idle" | "validating" | "success" | "error"
-
-// Provider logo component
-function ProviderLogo({
-    provider,
-    className,
-}: {
-    provider: ProviderName
-    className?: string
-}) {
-    // Use Lucide icons for providers without models.dev logos
-    if (provider === "bedrock") {
-        return <Cloud className={cn("size-4", className)} />
-    }
-    if (provider === "sglang") {
-        return <Server className={cn("size-4", className)} />
-    }
-    if (provider === "doubao") {
-        return <Sparkles className={cn("size-4", className)} />
-    }
-
-    const logoName = PROVIDER_LOGO_MAP[provider] || provider
-    return (
-        // biome-ignore lint/performance/noImgElement: External URL from models.dev
-        <img
-            alt={`${provider} logo`}
-            className={cn("size-4 dark:invert", className)}
-            height={16}
-            src={`https://models.dev/logos/${logoName}.svg`}
-            width={16}
-        />
-    )
-}
 
 // Configuration section with title and optional action
 function ConfigSection({

@@ -12,6 +12,7 @@ import {
     ShieldCheck,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { ProviderLogo } from "@/components/provider-logo"
 import { Button } from "@/components/ui/button"
 import {
     Collapsible,
@@ -33,8 +34,10 @@ import {
     SETTING_GROUPS,
     SETTINGS_REGISTRY,
     type SettingDef,
+    SUBGROUP_PROVIDERS,
 } from "@/lib/admin/settings-registry"
 import { getApiEndpoint } from "@/lib/base-path"
+import type { ProviderName } from "@/lib/types/model-config"
 import { cn } from "@/lib/utils"
 
 const SESSION_PASSWORD_KEY = "next-ai-draw-io-admin-password"
@@ -327,6 +330,11 @@ function ProviderSubgroup({
                         )}
                         aria-hidden="true"
                     />
+                    {SUBGROUP_PROVIDERS[name] && (
+                        <ProviderLogo
+                            provider={SUBGROUP_PROVIDERS[name] as ProviderName}
+                        />
+                    )}
                     {name}
                 </span>
                 {configured && (
@@ -365,6 +373,8 @@ export default function AdminPage() {
     const [errors, setErrors] = useState<Record<string, string>>({})
     const [saving, setSaving] = useState(false)
     const [saveMessage, setSaveMessage] = useState("")
+    const [justSaved, setJustSaved] = useState(false)
+    const [activeGroup, setActiveGroup] = useState(SETTING_GROUPS[0].id)
     const mainRef = useRef<HTMLDivElement>(null)
 
     const dirtyCount = Object.keys(pending).length
@@ -428,6 +438,29 @@ export default function AdminPage() {
         window.addEventListener("beforeunload", handler)
         return () => window.removeEventListener("beforeunload", handler)
     }, [dirtyCount])
+
+    // Highlight the section currently in view in the sidebar
+    useEffect(() => {
+        if (!authedPassword) return
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const visible = entries
+                    .filter((e) => e.isIntersecting)
+                    .sort(
+                        (a, b) =>
+                            a.boundingClientRect.top - b.boundingClientRect.top,
+                    )
+                if (visible[0]) setActiveGroup(visible[0].target.id)
+            },
+            // Track which section heading is in the top half of the viewport
+            { rootMargin: "-10% 0px -50% 0px" },
+        )
+        for (const group of SETTING_GROUPS) {
+            const el = document.getElementById(group.id)
+            if (el) observer.observe(el)
+        }
+        return () => observer.disconnect()
+    }, [authedPassword])
 
     const handleChange = useCallback(
         (key: string, value: string | null) => {
@@ -494,6 +527,11 @@ export default function AdminPage() {
             applyResponse(data)
             setPending({})
             setSaveMessage("Settings saved. Changes apply immediately.")
+            setJustSaved(true)
+            setTimeout(() => {
+                setJustSaved(false)
+                setSaveMessage("")
+            }, 4000)
         } catch {
             setSaveMessage(
                 "Save failed: network error. Check your connection and try again.",
@@ -585,7 +623,7 @@ export default function AdminPage() {
     return (
         <div className="min-h-screen bg-background">
             <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
-                <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+                <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-2">
                         <ShieldCheck
                             className="h-5 w-5 text-primary"
@@ -603,7 +641,7 @@ export default function AdminPage() {
 
             {!writable && (
                 <div className="border-b bg-amber-500/10">
-                    <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                    <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
                         <AlertTriangle
                             className="h-4 w-4 shrink-0"
                             aria-hidden="true"
@@ -616,7 +654,7 @@ export default function AdminPage() {
                 </div>
             )}
 
-            <div className="mx-auto flex max-w-5xl gap-8 px-4 py-6">
+            <div className="mx-auto flex max-w-6xl gap-8 px-4 py-6">
                 <nav
                     aria-label="Setting groups"
                     className="sticky top-20 hidden h-fit w-44 shrink-0 md:block"
@@ -626,7 +664,17 @@ export default function AdminPage() {
                             <li key={group.id}>
                                 <a
                                     href={`#${group.id}`}
-                                    className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    aria-current={
+                                        activeGroup === group.id
+                                            ? "true"
+                                            : undefined
+                                    }
+                                    className={cn(
+                                        "block rounded-md px-3 py-1.5 text-sm hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                        activeGroup === group.id
+                                            ? "bg-muted font-medium text-foreground"
+                                            : "text-muted-foreground",
+                                    )}
                                 >
                                     {group.title}
                                 </a>
@@ -700,8 +748,21 @@ export default function AdminPage() {
 
             {(dirtyCount > 0 || saveMessage) && (
                 <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur">
-                    <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-                        <p className="min-w-0 truncate text-sm text-muted-foreground">
+                    <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
+                        <p
+                            className={cn(
+                                "flex min-w-0 items-center gap-1.5 truncate text-sm",
+                                justSaved
+                                    ? "text-green-600 dark:text-green-400"
+                                    : "text-muted-foreground",
+                            )}
+                        >
+                            {justSaved && (
+                                <Check
+                                    className="h-4 w-4 shrink-0"
+                                    aria-hidden="true"
+                                />
+                            )}
                             {dirtyCount > 0
                                 ? `${dirtyCount} unsaved ${dirtyCount === 1 ? "change" : "changes"}`
                                 : saveMessage}
