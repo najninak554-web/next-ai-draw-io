@@ -82,5 +82,8 @@ export function isPrivateUrl(urlString: string): boolean {
 /**
  * Whether private URLs are allowed (defaults to true)
  * Set ALLOW_PRIVATE_URLS=false to block private URLs
+ * Read per call so admin-panel changes apply without restart
  */
-export const allowPrivateUrls = process.env.ALLOW_PRIVATE_URLS !== "false"
+export function allowPrivateUrls(): boolean {
+    return process.env.ALLOW_PRIVATE_URLS !== "false"
+}

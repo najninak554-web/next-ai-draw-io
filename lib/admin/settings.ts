@@ -62,20 +62,16 @@ export function applyToEnv(): void {
     overlaidKeys = new Set(Object.keys(values))
 }
 
-// Whether a key's current value comes from the file, the environment, or is unset
-export function getValueSource(key: string): "file" | "env" | "default" {
-    const values = loadSettings()
-    if (key in values) return "file"
-    const envValue = overlaidKeys.has(key)
-        ? originalEnv[key]
-        : (process.env[key] ?? null)
-    return envValue !== null && envValue !== undefined ? "env" : "default"
-}
-
 // The effective env value if the file entry were removed (for fallback display)
 export function getEnvFallback(key: string): string | null {
     if (overlaidKeys.has(key)) return originalEnv[key] ?? null
     return process.env[key] ?? null
+}
+
+// Whether a key's current value comes from the file, the environment, or is unset
+export function getValueSource(key: string): "file" | "env" | "default" {
+    if (key in loadSettings()) return "file"
+    return getEnvFallback(key) !== null ? "env" : "default"
 }
 
 export function saveSettings(updates: Record<string, string | null>): void {

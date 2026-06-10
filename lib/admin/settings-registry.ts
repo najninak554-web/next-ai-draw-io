@@ -6,6 +6,8 @@
 // - NEXT_PUBLIC_* vars: baked into the client bundle at build time
 // - ADMIN_PASSWORD / SETTINGS_FILE: bootstrap values, env-only to avoid lockout
 
+import { PROVIDER_INFO, type ProviderName } from "@/lib/types/model-config"
+
 export type SettingType =
     | "string"
     | "secret"
@@ -26,8 +28,9 @@ export interface SettingDef {
     placeholder?: string
     // Value is only picked up at process start (module-load readers)
     restartRequired?: boolean
-    // Collapsible subsection within a group (used for the per-provider lists)
-    subgroup?: string
+    // Provider this setting belongs to; rendered inside that provider's
+    // collapsible in the Provider Credentials group
+    provider?: ProviderName
 }
 
 export interface SettingGroup {
@@ -81,159 +84,46 @@ export const SETTING_GROUPS: SettingGroup[] = [
     },
 ]
 
-// Provider name for each subgroup in the providers group (for logos)
-export const SUBGROUP_PROVIDERS: Record<string, string> = {
-    "AWS Bedrock": "bedrock",
-    OpenAI: "openai",
-    Anthropic: "anthropic",
-    Google: "google",
-    "Vertex AI": "vertexai",
-    "Azure OpenAI": "azure",
-    Ollama: "ollama",
-    OpenRouter: "openrouter",
-    DeepSeek: "deepseek",
-    SiliconFlow: "siliconflow",
-    SGLang: "sglang",
-    "Vercel AI Gateway": "gateway",
-    Doubao: "doubao",
-    ModelScope: "modelscope",
-    GLM: "glm",
-    Qwen: "qwen",
-    Kimi: "kimi",
-    Qiniu: "qiniu",
-    MiniMax: "minimax",
-    Novita: "novita",
-}
+const PROVIDER_OPTIONS = Object.keys(PROVIDER_INFO)
 
-const PROVIDER_OPTIONS = [
-    "bedrock",
-    "openai",
-    "anthropic",
-    "google",
-    "vertexai",
-    "azure",
-    "ollama",
-    "openrouter",
-    "deepseek",
-    "siliconflow",
-    "sglang",
-    "gateway",
-    "edgeone",
-    "doubao",
-    "modelscope",
-    "glm",
-    "qwen",
-    "kimi",
-    "qiniu",
-    "minimax",
-    "novita",
-]
-
-// Simple API-key + base-URL providers, rendered as one subgroup each
-const SIMPLE_PROVIDERS: Array<{
-    subgroup: string
-    keyVar: string
-    urlVar: string
-    urlPlaceholder?: string
-}> = [
-    {
-        subgroup: "OpenRouter",
-        keyVar: "OPENROUTER_API_KEY",
-        urlVar: "OPENROUTER_BASE_URL",
-        urlPlaceholder: "https://openrouter.ai/api/v1",
-    },
-    {
-        subgroup: "DeepSeek",
-        keyVar: "DEEPSEEK_API_KEY",
-        urlVar: "DEEPSEEK_BASE_URL",
-        urlPlaceholder: "https://api.deepseek.com/v1",
-    },
-    {
-        subgroup: "SiliconFlow",
-        keyVar: "SILICONFLOW_API_KEY",
-        urlVar: "SILICONFLOW_BASE_URL",
-        urlPlaceholder: "https://api.siliconflow.com/v1",
-    },
-    {
-        subgroup: "SGLang",
-        keyVar: "SGLANG_API_KEY",
-        urlVar: "SGLANG_BASE_URL",
-        urlPlaceholder: "http://127.0.0.1:8000/v1",
-    },
-    {
-        subgroup: "Vercel AI Gateway",
-        keyVar: "AI_GATEWAY_API_KEY",
-        urlVar: "AI_GATEWAY_BASE_URL",
-        urlPlaceholder: "https://ai-gateway.vercel.sh/v1/ai",
-    },
-    {
-        subgroup: "Doubao",
-        keyVar: "DOUBAO_API_KEY",
-        urlVar: "DOUBAO_BASE_URL",
-        urlPlaceholder: "https://ark.cn-beijing.volces.com/api/v3",
-    },
-    {
-        subgroup: "ModelScope",
-        keyVar: "MODELSCOPE_API_KEY",
-        urlVar: "MODELSCOPE_BASE_URL",
-        urlPlaceholder: "https://api-inference.modelscope.cn/v1",
-    },
-    {
-        subgroup: "GLM",
-        keyVar: "GLM_API_KEY",
-        urlVar: "GLM_BASE_URL",
-        urlPlaceholder: "https://open.bigmodel.cn/api/paas/v4",
-    },
-    {
-        subgroup: "Qwen",
-        keyVar: "QWEN_API_KEY",
-        urlVar: "QWEN_BASE_URL",
-        urlPlaceholder: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    },
-    {
-        subgroup: "Kimi",
-        keyVar: "KIMI_API_KEY",
-        urlVar: "KIMI_BASE_URL",
-        urlPlaceholder: "https://api.moonshot.cn/v1",
-    },
-    {
-        subgroup: "Qiniu",
-        keyVar: "QINIU_API_KEY",
-        urlVar: "QINIU_BASE_URL",
-        urlPlaceholder: "https://api.qnaigc.com/v1",
-    },
-    {
-        subgroup: "MiniMax",
-        keyVar: "MINIMAX_API_KEY",
-        urlVar: "MINIMAX_BASE_URL",
-        urlPlaceholder: "https://api.minimaxi.com/anthropic",
-    },
-    {
-        subgroup: "Novita",
-        keyVar: "NOVITA_API_KEY",
-        urlVar: "NOVITA_BASE_URL",
-        urlPlaceholder: "https://api.novita.ai/openai",
-    },
+// Providers with just {PREFIX}_API_KEY + {PREFIX}_BASE_URL env vars.
+// Labels and URL placeholders come from PROVIDER_INFO.
+const SIMPLE_PROVIDERS: Array<{ provider: ProviderName; prefix?: string }> = [
+    { provider: "openrouter" },
+    { provider: "deepseek" },
+    { provider: "siliconflow" },
+    { provider: "sglang" },
+    { provider: "gateway", prefix: "AI_GATEWAY" },
+    { provider: "doubao" },
+    { provider: "modelscope" },
+    { provider: "glm" },
+    { provider: "qwen" },
+    { provider: "kimi" },
+    { provider: "qiniu" },
+    { provider: "minimax" },
+    { provider: "novita" },
 ]
 
 function simpleProviderSettings(): SettingDef[] {
-    return SIMPLE_PROVIDERS.flatMap((p) => [
-        {
-            key: p.keyVar,
-            group: "providers",
-            subgroup: p.subgroup,
-            type: "secret" as const,
-            label: "API Key",
-        },
-        {
-            key: p.urlVar,
-            group: "providers",
-            subgroup: p.subgroup,
-            type: "string" as const,
-            label: "Base URL",
-            placeholder: p.urlPlaceholder,
-        },
-    ])
+    return SIMPLE_PROVIDERS.flatMap(
+        ({ provider, prefix = provider.toUpperCase() }) => [
+            {
+                key: `${prefix}_API_KEY`,
+                group: "providers",
+                provider,
+                type: "secret" as const,
+                label: "API Key",
+            },
+            {
+                key: `${prefix}_BASE_URL`,
+                group: "providers",
+                provider,
+                type: "string" as const,
+                label: "Base URL",
+                placeholder: PROVIDER_INFO[provider].defaultBaseUrl,
+            },
+        ],
+    )
 }
 
 export const SETTINGS_REGISTRY: SettingDef[] = [
@@ -259,7 +149,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "AWS_REGION",
         group: "providers",
-        subgroup: "AWS Bedrock",
+        provider: "bedrock",
         type: "string",
         label: "AWS Region",
         placeholder: "us-west-2",
@@ -267,21 +157,21 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "AWS_ACCESS_KEY_ID",
         group: "providers",
-        subgroup: "AWS Bedrock",
+        provider: "bedrock",
         type: "secret",
         label: "Access Key ID",
     },
     {
         key: "AWS_SECRET_ACCESS_KEY",
         group: "providers",
-        subgroup: "AWS Bedrock",
+        provider: "bedrock",
         type: "secret",
         label: "Secret Access Key",
     },
     {
         key: "BEDROCK_REASONING_BUDGET_TOKENS",
         group: "providers",
-        subgroup: "AWS Bedrock",
+        provider: "bedrock",
         type: "number",
         label: "Reasoning Budget Tokens",
         description: "Claude extended-thinking budget (1024–64000).",
@@ -291,7 +181,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "BEDROCK_REASONING_EFFORT",
         group: "providers",
-        subgroup: "AWS Bedrock",
+        provider: "bedrock",
         type: "enum",
         label: "Reasoning Effort",
         description: "For Nova models.",
@@ -302,23 +192,23 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "OPENAI_API_KEY",
         group: "providers",
-        subgroup: "OpenAI",
+        provider: "openai",
         type: "secret",
         label: "API Key",
     },
     {
         key: "OPENAI_BASE_URL",
         group: "providers",
-        subgroup: "OpenAI",
+        provider: "openai",
         type: "string",
         label: "Base URL",
         description: "Custom OpenAI-compatible endpoint.",
-        placeholder: "https://api.openai.com/v1",
+        placeholder: PROVIDER_INFO.openai.defaultBaseUrl,
     },
     {
         key: "OPENAI_REASONING_EFFORT",
         group: "providers",
-        subgroup: "OpenAI",
+        provider: "openai",
         type: "enum",
         label: "Reasoning Effort",
         options: ["minimal", "low", "medium", "high"],
@@ -326,7 +216,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "OPENAI_REASONING_SUMMARY",
         group: "providers",
-        subgroup: "OpenAI",
+        provider: "openai",
         type: "enum",
         label: "Reasoning Summary",
         options: ["none", "brief", "detailed"],
@@ -336,7 +226,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "ANTHROPIC_API_KEY",
         group: "providers",
-        subgroup: "Anthropic",
+        provider: "anthropic",
         type: "secret",
         label: "API Key",
         description: "Sent as x-api-key header.",
@@ -344,7 +234,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "ANTHROPIC_AUTH_TOKEN",
         group: "providers",
-        subgroup: "Anthropic",
+        provider: "anthropic",
         type: "secret",
         label: "Auth Token",
         description:
@@ -353,15 +243,15 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "ANTHROPIC_BASE_URL",
         group: "providers",
-        subgroup: "Anthropic",
+        provider: "anthropic",
         type: "string",
         label: "Base URL",
-        placeholder: "https://api.anthropic.com/v1",
+        placeholder: PROVIDER_INFO.anthropic.defaultBaseUrl,
     },
     {
         key: "ANTHROPIC_THINKING_TYPE",
         group: "providers",
-        subgroup: "Anthropic",
+        provider: "anthropic",
         type: "enum",
         label: "Extended Thinking",
         options: ["enabled"],
@@ -369,7 +259,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "ANTHROPIC_THINKING_BUDGET_TOKENS",
         group: "providers",
-        subgroup: "Anthropic",
+        provider: "anthropic",
         type: "number",
         label: "Thinking Budget Tokens",
         min: 1024,
@@ -380,22 +270,22 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_GENERATIVE_AI_API_KEY",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "secret",
         label: "API Key",
     },
     {
         key: "GOOGLE_BASE_URL",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "string",
         label: "Base URL",
-        placeholder: "https://generativelanguage.googleapis.com/v1beta",
+        placeholder: PROVIDER_INFO.google.defaultBaseUrl,
     },
     {
         key: "GOOGLE_THINKING_BUDGET",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "number",
         label: "Thinking Budget (Gemini 2.5)",
         min: 1024,
@@ -404,7 +294,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_THINKING_LEVEL",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "enum",
         label: "Thinking Level (Gemini 3)",
         options: ["low", "high"],
@@ -412,7 +302,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_REASONING_EFFORT",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "enum",
         label: "Reasoning Effort",
         options: ["low", "medium", "high"],
@@ -420,7 +310,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_CANDIDATE_COUNT",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "number",
         label: "Candidate Count",
         min: 1,
@@ -429,7 +319,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_TOP_K",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "number",
         label: "Top K",
         min: 1,
@@ -438,7 +328,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_TOP_P",
         group: "providers",
-        subgroup: "Google",
+        provider: "google",
         type: "number",
         label: "Top P",
         min: 0,
@@ -449,7 +339,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_VERTEX_API_KEY",
         group: "providers",
-        subgroup: "Vertex AI",
+        provider: "vertexai",
         type: "secret",
         label: "API Key",
         description: "Express Mode API key.",
@@ -457,14 +347,14 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_VERTEX_BASE_URL",
         group: "providers",
-        subgroup: "Vertex AI",
+        provider: "vertexai",
         type: "string",
         label: "Base URL",
     },
     {
         key: "GOOGLE_VERTEX_THINKING_BUDGET",
         group: "providers",
-        subgroup: "Vertex AI",
+        provider: "vertexai",
         type: "number",
         label: "Thinking Budget (Gemini 2.5)",
         min: 1024,
@@ -473,7 +363,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "GOOGLE_VERTEX_THINKING_LEVEL",
         group: "providers",
-        subgroup: "Vertex AI",
+        provider: "vertexai",
         type: "enum",
         label: "Thinking Level (Gemini 3)",
         options: ["minimal", "low", "medium", "high"],
@@ -483,14 +373,14 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "AZURE_API_KEY",
         group: "providers",
-        subgroup: "Azure OpenAI",
+        provider: "azure",
         type: "secret",
         label: "API Key",
     },
     {
         key: "AZURE_RESOURCE_NAME",
         group: "providers",
-        subgroup: "Azure OpenAI",
+        provider: "azure",
         type: "string",
         label: "Resource Name",
         description: "Endpoint becomes https://{name}.openai.azure.com.",
@@ -498,7 +388,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "AZURE_BASE_URL",
         group: "providers",
-        subgroup: "Azure OpenAI",
+        provider: "azure",
         type: "string",
         label: "Base URL",
         description: "Alternative to resource name; takes precedence.",
@@ -506,7 +396,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "AZURE_REASONING_EFFORT",
         group: "providers",
-        subgroup: "Azure OpenAI",
+        provider: "azure",
         type: "enum",
         label: "Reasoning Effort",
         options: ["low", "medium", "high"],
@@ -514,7 +404,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "AZURE_REASONING_SUMMARY",
         group: "providers",
-        subgroup: "Azure OpenAI",
+        provider: "azure",
         type: "enum",
         label: "Reasoning Summary",
         options: ["none", "brief", "detailed"],
@@ -524,15 +414,15 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "OLLAMA_BASE_URL",
         group: "providers",
-        subgroup: "Ollama",
+        provider: "ollama",
         type: "string",
         label: "Base URL",
-        placeholder: "https://ollama.com/api",
+        placeholder: PROVIDER_INFO.ollama.defaultBaseUrl,
     },
     {
         key: "OLLAMA_API_KEY",
         group: "providers",
-        subgroup: "Ollama",
+        provider: "ollama",
         type: "secret",
         label: "API Key",
         description: "For Ollama Cloud or authenticated remote instances.",
@@ -540,7 +430,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     {
         key: "OLLAMA_ENABLE_THINKING",
         group: "providers",
-        subgroup: "Ollama",
+        provider: "ollama",
         type: "boolean",
         label: "Enable Thinking",
     },
@@ -591,56 +481,6 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
         description:
             "Comma-separated list. Users must enter one to chat. Empty = open access.",
         placeholder: "code1,code2",
-    },
-
-    // ── Quota ────────────────────────────────────────────────────────
-    {
-        key: "DAILY_REQUEST_LIMIT",
-        group: "quota",
-        type: "number",
-        label: "Daily Request Limit",
-        description: "Per IP per day.",
-        min: 1,
-    },
-    {
-        key: "DAILY_TOKEN_LIMIT",
-        group: "quota",
-        type: "number",
-        label: "Daily Token Limit",
-        description: "Per IP per day.",
-        min: 1,
-    },
-    {
-        key: "TPM_LIMIT",
-        group: "quota",
-        type: "number",
-        label: "Tokens Per Minute",
-        min: 1,
-    },
-    {
-        key: "DYNAMODB_QUOTA_TABLE",
-        group: "quota",
-        type: "string",
-        label: "DynamoDB Table",
-        description: "Quota enforcement is disabled when empty.",
-        restartRequired: true,
-    },
-    {
-        key: "DYNAMODB_REGION",
-        group: "quota",
-        type: "string",
-        label: "DynamoDB Region",
-        placeholder: "ap-northeast-1",
-        restartRequired: true,
-    },
-    {
-        key: "QUOTA_TIMEZONE",
-        group: "quota",
-        type: "string",
-        label: "Quota Timezone",
-        description: "Timezone for the daily reset boundary.",
-        placeholder: "UTC",
-        restartRequired: true,
     },
 
     // ── Features ─────────────────────────────────────────────────────
@@ -706,8 +546,74 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
         placeholder: "https://cloud.langfuse.com",
         restartRequired: true,
     },
+
+    // ── Quota ────────────────────────────────────────────────────────
+    {
+        key: "DAILY_REQUEST_LIMIT",
+        group: "quota",
+        type: "number",
+        label: "Daily Request Limit",
+        description: "Per IP per day.",
+        min: 1,
+    },
+    {
+        key: "DAILY_TOKEN_LIMIT",
+        group: "quota",
+        type: "number",
+        label: "Daily Token Limit",
+        description: "Per IP per day.",
+        min: 1,
+    },
+    {
+        key: "TPM_LIMIT",
+        group: "quota",
+        type: "number",
+        label: "Tokens Per Minute",
+        min: 1,
+    },
+    {
+        key: "DYNAMODB_QUOTA_TABLE",
+        group: "quota",
+        type: "string",
+        label: "DynamoDB Table",
+        description: "Quota enforcement is disabled when empty.",
+        restartRequired: true,
+    },
+    {
+        key: "DYNAMODB_REGION",
+        group: "quota",
+        type: "string",
+        label: "DynamoDB Region",
+        placeholder: "ap-northeast-1",
+        restartRequired: true,
+    },
+    {
+        key: "QUOTA_TIMEZONE",
+        group: "quota",
+        type: "string",
+        label: "Quota Timezone",
+        description: "Timezone for the daily reset boundary.",
+        placeholder: "UTC",
+        restartRequired: true,
+    },
 ]
 
 export const SETTINGS_BY_KEY: Map<string, SettingDef> = new Map(
     SETTINGS_REGISTRY.map((def) => [def.key, def]),
 )
+
+export const SETTINGS_BY_GROUP: Map<string, SettingDef[]> = new Map(
+    SETTING_GROUPS.map((g) => [
+        g.id,
+        SETTINGS_REGISTRY.filter((d) => d.group === g.id),
+    ]),
+)
+
+// Provider Credentials group, keyed by provider in registry order
+export const PROVIDER_SUBGROUPS: Map<ProviderName, SettingDef[]> = new Map()
+for (const def of SETTINGS_REGISTRY) {
+    if (!def.provider) continue
+    const list = PROVIDER_SUBGROUPS.get(def.provider) ?? []
+    list.push(def)
+    PROVIDER_SUBGROUPS.set(def.provider, list)
+}

@@ -11,7 +11,7 @@ import {
     RotateCcw,
     ShieldCheck,
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { ProviderLogo } from "@/components/provider-logo"
 import { Button } from "@/components/ui/button"
 import {
@@ -31,16 +31,30 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import {
+    PROVIDER_SUBGROUPS,
     SETTING_GROUPS,
-    SETTINGS_REGISTRY,
+    SETTINGS_BY_GROUP,
     type SettingDef,
-    SUBGROUP_PROVIDERS,
 } from "@/lib/admin/settings-registry"
 import { getApiEndpoint } from "@/lib/base-path"
-import type { ProviderName } from "@/lib/types/model-config"
+import { PROVIDER_INFO, type ProviderName } from "@/lib/types/model-config"
 import { cn } from "@/lib/utils"
 
 const SESSION_PASSWORD_KEY = "next-ai-draw-io-admin-password"
+
+async function fetchSettings(pw: string) {
+    const res = await fetch(getApiEndpoint("/api/admin/settings"), {
+        headers: { "x-admin-password": pw },
+    })
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Request failed (${res.status})`)
+    }
+    return res.json() as Promise<{
+        writable: boolean
+        settings: SettingState[]
+    }>
+}
 
 type SecretValue = { isSet: true; hint: string }
 
@@ -54,6 +68,11 @@ type SettingsMap = Record<string, SettingState>
 
 function isSecretValue(v: unknown): v is SecretValue {
     return typeof v === "object" && v !== null && "isSet" in v
+}
+
+// Editable text of a saved setting; secrets have none (write-only)
+function savedTextOf(state: SettingState | undefined): string {
+    return state && !isSecretValue(state.value) ? (state.value ?? "") : ""
 }
 
 function SourceChip({ source }: { source: "file" | "env" | "default" }) {
@@ -104,9 +123,7 @@ function SettingField({
     const isDirty = pendingValue !== undefined
     const source = state?.source ?? "default"
 
-    const savedText =
-        state && !isSecretValue(state.value) ? (state.value ?? "") : ""
-    const currentValue = isDirty ? (pendingValue ?? "") : savedText
+    const currentValue = isDirty ? (pendingValue ?? "") : savedTextOf(state)
 
     const secretIsSet = state ? isSecretValue(state.value) : false
     const secretHint =
@@ -296,7 +313,7 @@ function SettingField({
 }
 
 function ProviderSubgroup({
-    name,
+    provider,
     defs,
     settings,
     pending,
@@ -304,7 +321,7 @@ function ProviderSubgroup({
     disabled,
     onChange,
 }: {
-    name: string
+    provider: ProviderName
     defs: SettingDef[]
     settings: SettingsMap
     pending: Record<string, string | null>
@@ -330,12 +347,8 @@ function ProviderSubgroup({
                         )}
                         aria-hidden="true"
                     />
-                    {SUBGROUP_PROVIDERS[name] && (
-                        <ProviderLogo
-                            provider={SUBGROUP_PROVIDERS[name] as ProviderName}
-                        />
-                    )}
-                    {name}
+                    <ProviderLogo provider={provider} />
+                    {PROVIDER_INFO[provider].label}
                 </span>
                 {configured && (
                     <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
@@ -372,31 +385,18 @@ export default function AdminPage() {
     const [pending, setPending] = useState<Record<string, string | null>>({})
     const [errors, setErrors] = useState<Record<string, string>>({})
     const [saving, setSaving] = useState(false)
-    const [saveMessage, setSaveMessage] = useState("")
-    const [justSaved, setJustSaved] = useState(false)
+    const [saveMessage, setSaveMessage] = useState<{
+        ok: boolean
+        text: string
+    } | null>(null)
     const [activeGroup, setActiveGroup] = useState(SETTING_GROUPS[0].id)
     // Toggleable groups (quota, observability): off by default, on when
     // any of their fields is already configured
     const [enabledGroups, setEnabledGroups] = useState<Record<string, boolean>>(
         {},
     )
-    const mainRef = useRef<HTMLDivElement>(null)
 
     const dirtyCount = Object.keys(pending).length
-
-    const fetchSettings = useCallback(async (pw: string) => {
-        const res = await fetch(getApiEndpoint("/api/admin/settings"), {
-            headers: { "x-admin-password": pw },
-        })
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}))
-            throw new Error(data.error || `Request failed (${res.status})`)
-        }
-        return res.json() as Promise<{
-            writable: boolean
-            settings: SettingState[]
-        }>
-    }, [])
 
     const applyResponse = useCallback(
         (data: { writable: boolean; settings: SettingState[] }) => {
@@ -409,10 +409,8 @@ export default function AdminPage() {
                 const next = { ...prev }
                 for (const group of SETTING_GROUPS) {
                     if (!group.toggleable) continue
-                    const configured = SETTINGS_REGISTRY.some(
-                        (d) =>
-                            d.group === group.id &&
-                            map[d.key]?.source !== "default",
+                    const configured = SETTINGS_BY_GROUP.get(group.id)?.some(
+                        (d) => map[d.key]?.source !== "default",
                     )
                     if (configured) next[group.id] = true
                 }
@@ -439,7 +437,7 @@ export default function AdminPage() {
                 setAuthLoading(false)
             }
         },
-        [fetchSettings, applyResponse],
+        [applyResponse],
     )
 
     // Restore session on mount
@@ -449,14 +447,15 @@ export default function AdminPage() {
     }, [login])
 
     // Warn before leaving with unsaved changes
+    const hasDirty = dirtyCount > 0
     useEffect(() => {
-        if (dirtyCount === 0) return
+        if (!hasDirty) return
         const handler = (e: BeforeUnloadEvent) => {
             e.preventDefault()
         }
         window.addEventListener("beforeunload", handler)
         return () => window.removeEventListener("beforeunload", handler)
-    }, [dirtyCount])
+    }, [hasDirty])
 
     // Highlight the section currently in view in the sidebar
     useEffect(() => {
@@ -483,7 +482,7 @@ export default function AdminPage() {
 
     const handleChange = useCallback(
         (key: string, value: string | null) => {
-            setSaveMessage("")
+            setSaveMessage(null)
             setErrors((prev) => {
                 if (!(key in prev)) return prev
                 const next = { ...prev }
@@ -492,17 +491,13 @@ export default function AdminPage() {
             })
             setPending((prev) => {
                 const state = settings[key]
-                const savedText =
-                    state && !isSecretValue(state.value)
-                        ? (state.value ?? "")
-                        : ""
                 // Typing back the saved value (or clearing an untouched field)
                 // removes it from the dirty set
                 const isRevert =
                     value !== null &&
                     state?.source === "file" &&
                     !isSecretValue(state?.value) &&
-                    value === savedText
+                    value === savedTextOf(state)
                 const isNoop =
                     value === "" &&
                     (!state || state.source !== "file") &&
@@ -521,7 +516,7 @@ export default function AdminPage() {
     const handleSave = useCallback(async () => {
         if (!authedPassword || dirtyCount === 0) return
         setSaving(true)
-        setSaveMessage("")
+        setSaveMessage(null)
         setErrors({})
         try {
             const res = await fetch(getApiEndpoint("/api/admin/settings"), {
@@ -539,37 +534,29 @@ export default function AdminPage() {
                     const firstKey = Object.keys(data.errors)[0]
                     document.getElementById(`setting-${firstKey}`)?.focus()
                 } else {
-                    setSaveMessage(data.error || "Save failed")
+                    setSaveMessage({
+                        ok: false,
+                        text: data.error || "Save failed",
+                    })
                 }
                 return
             }
             applyResponse(data)
             setPending({})
-            setSaveMessage("Settings saved. Changes apply immediately.")
-            setJustSaved(true)
-            setTimeout(() => {
-                setJustSaved(false)
-                setSaveMessage("")
-            }, 4000)
+            setSaveMessage({
+                ok: true,
+                text: "Settings saved. Changes apply immediately.",
+            })
+            setTimeout(() => setSaveMessage(null), 4000)
         } catch {
-            setSaveMessage(
-                "Save failed: network error. Check your connection and try again.",
-            )
+            setSaveMessage({
+                ok: false,
+                text: "Save failed: network error. Check your connection and try again.",
+            })
         } finally {
             setSaving(false)
         }
     }, [authedPassword, pending, dirtyCount, applyResponse])
-
-    const providerSubgroups = useMemo(() => {
-        const map = new Map<string, SettingDef[]>()
-        for (const def of SETTINGS_REGISTRY) {
-            if (def.group !== "providers" || !def.subgroup) continue
-            const list = map.get(def.subgroup) ?? []
-            list.push(def)
-            map.set(def.subgroup, list)
-        }
-        return map
-    }, [])
 
     // ── Login screen ─────────────────────────────────────────────────
     if (!authedPassword) {
@@ -702,11 +689,9 @@ export default function AdminPage() {
                     </ul>
                 </nav>
 
-                <main ref={mainRef} className="min-w-0 flex-1 pb-24">
+                <main className="min-w-0 flex-1 pb-24">
                     {SETTING_GROUPS.map((group) => {
-                        const defs = SETTINGS_REGISTRY.filter(
-                            (d) => d.group === group.id,
-                        )
+                        const defs = SETTINGS_BY_GROUP.get(group.id) ?? []
                         const groupOff =
                             group.toggleable && !enabledGroups[group.id]
                         const fieldsDisabled = !writable || !!groupOff
@@ -764,11 +749,11 @@ export default function AdminPage() {
                                     )}
                                 >
                                     {group.id === "providers"
-                                        ? [...providerSubgroups.entries()].map(
-                                              ([name, subDefs]) => (
+                                        ? [...PROVIDER_SUBGROUPS.entries()].map(
+                                              ([provider, subDefs]) => (
                                                   <ProviderSubgroup
-                                                      key={name}
-                                                      name={name}
+                                                      key={provider}
+                                                      provider={provider}
                                                       defs={subDefs}
                                                       settings={settings}
                                                       pending={pending}
@@ -802,7 +787,7 @@ export default function AdminPage() {
 
             {/* Always-mounted live region so save results are announced */}
             <p aria-live="polite" className="sr-only">
-                {saveMessage}
+                {saveMessage?.text ?? ""}
             </p>
 
             {(dirtyCount > 0 || saveMessage) && (
@@ -811,12 +796,12 @@ export default function AdminPage() {
                         <p
                             className={cn(
                                 "flex min-w-0 items-center gap-1.5 truncate text-sm",
-                                justSaved
+                                saveMessage?.ok
                                     ? "text-green-600 dark:text-green-400"
                                     : "text-muted-foreground",
                             )}
                         >
-                            {justSaved && (
+                            {saveMessage?.ok && (
                                 <Check
                                     className="h-4 w-4 shrink-0"
                                     aria-hidden="true"
@@ -824,7 +809,7 @@ export default function AdminPage() {
                             )}
                             {dirtyCount > 0
                                 ? `${dirtyCount} unsaved ${dirtyCount === 1 ? "change" : "changes"}`
-                                : saveMessage}
+                                : saveMessage?.text}
                         </p>
                         {dirtyCount > 0 && (
                             <div className="flex shrink-0 gap-2">

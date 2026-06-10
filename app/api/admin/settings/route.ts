@@ -6,8 +6,18 @@ import {
     loadSettings,
     saveSettings,
 } from "@/lib/admin/settings"
-import { SETTINGS_BY_KEY, type SettingDef } from "@/lib/admin/settings-registry"
+import {
+    SETTINGS_BY_KEY,
+    SETTINGS_REGISTRY,
+    type SettingDef,
+} from "@/lib/admin/settings-registry"
 import { ServerModelsConfigSchema } from "@/lib/server-model-config"
+
+// Zod schemas for json-type settings (kept here, server-side only — the
+// registry is imported by the client and must stay free of server deps)
+const JSON_VALIDATORS: Record<string, typeof ServerModelsConfigSchema> = {
+    AI_MODELS_CONFIG: ServerModelsConfigSchema,
+}
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -43,17 +53,13 @@ function maskSecret(value: string): { isSet: true; hint: string } {
 
 function serializeSettings() {
     const fileValues = loadSettings()
-    return [...SETTINGS_BY_KEY.values()].map((def) => {
+    return SETTINGS_REGISTRY.map((def) => {
         const source = getValueSource(def.key)
         const raw =
             source === "file"
                 ? fileValues[def.key]
                 : (getEnvFallback(def.key) ?? null)
-
-        let value: unknown = raw
-        if (def.type === "secret" && raw) {
-            value = maskSecret(raw)
-        }
+        const value = def.type === "secret" && raw ? maskSecret(raw) : raw
         return { key: def.key, source, value }
     })
 }
@@ -94,10 +100,11 @@ function validateValue(def: SettingDef, value: string): string | null {
             } catch {
                 return "Invalid JSON"
             }
-            if (def.key === "AI_MODELS_CONFIG") {
-                const result = ServerModelsConfigSchema.safeParse(parsed)
+            const schema = JSON_VALIDATORS[def.key]
+            if (schema) {
+                const result = schema.safeParse(parsed)
                 if (!result.success) {
-                    return `Invalid model registry: ${result.error.issues[0]?.message ?? "schema mismatch"}`
+                    return `Invalid value: ${result.error.issues[0]?.message ?? "schema mismatch"}`
                 }
             }
             return null
