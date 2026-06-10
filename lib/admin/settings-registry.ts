@@ -1,20 +1,16 @@
-// Declarative registry of all env vars editable in the admin panel.
+// Declarative registry of the general env vars editable in the admin panel.
 // Drives both server-side validation (app/api/admin/settings) and UI
 // rendering (app/[lang]/admin). Keys are exactly the env var names.
+//
+// AI providers and models are managed separately in the panel's Models
+// section (lib/admin/providers.ts), not here.
 //
 // Not listed here (and therefore rejected by the API):
 // - NEXT_PUBLIC_* vars: baked into the client bundle at build time
 // - ADMIN_PASSWORD / SETTINGS_FILE: bootstrap values, env-only to avoid lockout
+// - Per-provider reasoning/thinking tuning vars: env-only (see env.example)
 
-import { PROVIDER_INFO, type ProviderName } from "@/lib/types/model-config"
-
-export type SettingType =
-    | "string"
-    | "secret"
-    | "number"
-    | "boolean"
-    | "enum"
-    | "json"
+export type SettingType = "string" | "secret" | "number" | "boolean" | "enum"
 
 export interface SettingDef {
     key: string
@@ -28,9 +24,6 @@ export interface SettingDef {
     placeholder?: string
     // Value is only picked up at process start (module-load readers)
     restartRequired?: boolean
-    // Provider this setting belongs to; rendered inside that provider's
-    // collapsible in the Provider Credentials group
-    provider?: ProviderName
 }
 
 export interface SettingGroup {
@@ -44,20 +37,9 @@ export interface SettingGroup {
 
 export const SETTING_GROUPS: SettingGroup[] = [
     {
-        id: "general",
-        title: "General",
-        description: "Default AI provider and model used by the server.",
-    },
-    {
-        id: "providers",
-        title: "Provider Credentials",
-        description:
-            "API keys, endpoints, and tuning for each supported provider.",
-    },
-    {
-        id: "models",
-        title: "Model Behavior",
-        description: "Generation parameters and the multi-model registry.",
+        id: "generation",
+        title: "Generation",
+        description: "Output parameters applied to all chat requests.",
     },
     {
         id: "access",
@@ -84,363 +66,11 @@ export const SETTING_GROUPS: SettingGroup[] = [
     },
 ]
 
-const PROVIDER_OPTIONS = Object.keys(PROVIDER_INFO)
-
-// Providers with just {PREFIX}_API_KEY + {PREFIX}_BASE_URL env vars.
-// Labels and URL placeholders come from PROVIDER_INFO.
-const SIMPLE_PROVIDERS: Array<{ provider: ProviderName; prefix?: string }> = [
-    { provider: "openrouter" },
-    { provider: "deepseek" },
-    { provider: "siliconflow" },
-    { provider: "sglang" },
-    { provider: "gateway", prefix: "AI_GATEWAY" },
-    { provider: "doubao" },
-    { provider: "modelscope" },
-    { provider: "glm" },
-    { provider: "qwen" },
-    { provider: "kimi" },
-    { provider: "qiniu" },
-    { provider: "minimax" },
-    { provider: "novita" },
-]
-
-function simpleProviderSettings(): SettingDef[] {
-    return SIMPLE_PROVIDERS.flatMap(
-        ({ provider, prefix = provider.toUpperCase() }) => [
-            {
-                key: `${prefix}_API_KEY`,
-                group: "providers",
-                provider,
-                type: "secret" as const,
-                label: "API Key",
-            },
-            {
-                key: `${prefix}_BASE_URL`,
-                group: "providers",
-                provider,
-                type: "string" as const,
-                label: "Base URL",
-                placeholder: PROVIDER_INFO[provider].defaultBaseUrl,
-            },
-        ],
-    )
-}
-
 export const SETTINGS_REGISTRY: SettingDef[] = [
-    // ── General ──────────────────────────────────────────────────────
-    {
-        key: "AI_PROVIDER",
-        group: "general",
-        type: "enum",
-        label: "AI Provider",
-        description: "Default provider for chat requests.",
-        options: PROVIDER_OPTIONS,
-    },
-    {
-        key: "AI_MODEL",
-        group: "general",
-        type: "string",
-        label: "AI Model",
-        description: "Model ID for the chosen provider.",
-        placeholder: "e.g. gpt-5.2 or global.anthropic.claude-sonnet-4-5…",
-    },
-
-    // ── Providers: AWS Bedrock ───────────────────────────────────────
-    {
-        key: "AWS_REGION",
-        group: "providers",
-        provider: "bedrock",
-        type: "string",
-        label: "AWS Region",
-        placeholder: "us-west-2",
-    },
-    {
-        key: "AWS_ACCESS_KEY_ID",
-        group: "providers",
-        provider: "bedrock",
-        type: "secret",
-        label: "Access Key ID",
-    },
-    {
-        key: "AWS_SECRET_ACCESS_KEY",
-        group: "providers",
-        provider: "bedrock",
-        type: "secret",
-        label: "Secret Access Key",
-    },
-    {
-        key: "BEDROCK_REASONING_BUDGET_TOKENS",
-        group: "providers",
-        provider: "bedrock",
-        type: "number",
-        label: "Reasoning Budget Tokens",
-        description: "Claude extended-thinking budget (1024–64000).",
-        min: 1024,
-        max: 64000,
-    },
-    {
-        key: "BEDROCK_REASONING_EFFORT",
-        group: "providers",
-        provider: "bedrock",
-        type: "enum",
-        label: "Reasoning Effort",
-        description: "For Nova models.",
-        options: ["low", "medium", "high"],
-    },
-
-    // ── Providers: OpenAI ────────────────────────────────────────────
-    {
-        key: "OPENAI_API_KEY",
-        group: "providers",
-        provider: "openai",
-        type: "secret",
-        label: "API Key",
-    },
-    {
-        key: "OPENAI_BASE_URL",
-        group: "providers",
-        provider: "openai",
-        type: "string",
-        label: "Base URL",
-        description: "Custom OpenAI-compatible endpoint.",
-        placeholder: PROVIDER_INFO.openai.defaultBaseUrl,
-    },
-    {
-        key: "OPENAI_REASONING_EFFORT",
-        group: "providers",
-        provider: "openai",
-        type: "enum",
-        label: "Reasoning Effort",
-        options: ["minimal", "low", "medium", "high"],
-    },
-    {
-        key: "OPENAI_REASONING_SUMMARY",
-        group: "providers",
-        provider: "openai",
-        type: "enum",
-        label: "Reasoning Summary",
-        options: ["none", "brief", "detailed"],
-    },
-
-    // ── Providers: Anthropic ─────────────────────────────────────────
-    {
-        key: "ANTHROPIC_API_KEY",
-        group: "providers",
-        provider: "anthropic",
-        type: "secret",
-        label: "API Key",
-        description: "Sent as x-api-key header.",
-    },
-    {
-        key: "ANTHROPIC_AUTH_TOKEN",
-        group: "providers",
-        provider: "anthropic",
-        type: "secret",
-        label: "Auth Token",
-        description:
-            "Alternative to the API key; sent as Authorization: Bearer.",
-    },
-    {
-        key: "ANTHROPIC_BASE_URL",
-        group: "providers",
-        provider: "anthropic",
-        type: "string",
-        label: "Base URL",
-        placeholder: PROVIDER_INFO.anthropic.defaultBaseUrl,
-    },
-    {
-        key: "ANTHROPIC_THINKING_TYPE",
-        group: "providers",
-        provider: "anthropic",
-        type: "enum",
-        label: "Extended Thinking",
-        options: ["enabled"],
-    },
-    {
-        key: "ANTHROPIC_THINKING_BUDGET_TOKENS",
-        group: "providers",
-        provider: "anthropic",
-        type: "number",
-        label: "Thinking Budget Tokens",
-        min: 1024,
-        max: 64000,
-    },
-
-    // ── Providers: Google ────────────────────────────────────────────
-    {
-        key: "GOOGLE_GENERATIVE_AI_API_KEY",
-        group: "providers",
-        provider: "google",
-        type: "secret",
-        label: "API Key",
-    },
-    {
-        key: "GOOGLE_BASE_URL",
-        group: "providers",
-        provider: "google",
-        type: "string",
-        label: "Base URL",
-        placeholder: PROVIDER_INFO.google.defaultBaseUrl,
-    },
-    {
-        key: "GOOGLE_THINKING_BUDGET",
-        group: "providers",
-        provider: "google",
-        type: "number",
-        label: "Thinking Budget (Gemini 2.5)",
-        min: 1024,
-        max: 100000,
-    },
-    {
-        key: "GOOGLE_THINKING_LEVEL",
-        group: "providers",
-        provider: "google",
-        type: "enum",
-        label: "Thinking Level (Gemini 3)",
-        options: ["low", "high"],
-    },
-    {
-        key: "GOOGLE_REASONING_EFFORT",
-        group: "providers",
-        provider: "google",
-        type: "enum",
-        label: "Reasoning Effort",
-        options: ["low", "medium", "high"],
-    },
-    {
-        key: "GOOGLE_CANDIDATE_COUNT",
-        group: "providers",
-        provider: "google",
-        type: "number",
-        label: "Candidate Count",
-        min: 1,
-        max: 8,
-    },
-    {
-        key: "GOOGLE_TOP_K",
-        group: "providers",
-        provider: "google",
-        type: "number",
-        label: "Top K",
-        min: 1,
-        max: 100,
-    },
-    {
-        key: "GOOGLE_TOP_P",
-        group: "providers",
-        provider: "google",
-        type: "number",
-        label: "Top P",
-        min: 0,
-        max: 1,
-    },
-
-    // ── Providers: Vertex AI ─────────────────────────────────────────
-    {
-        key: "GOOGLE_VERTEX_API_KEY",
-        group: "providers",
-        provider: "vertexai",
-        type: "secret",
-        label: "API Key",
-        description: "Express Mode API key.",
-    },
-    {
-        key: "GOOGLE_VERTEX_BASE_URL",
-        group: "providers",
-        provider: "vertexai",
-        type: "string",
-        label: "Base URL",
-    },
-    {
-        key: "GOOGLE_VERTEX_THINKING_BUDGET",
-        group: "providers",
-        provider: "vertexai",
-        type: "number",
-        label: "Thinking Budget (Gemini 2.5)",
-        min: 1024,
-        max: 100000,
-    },
-    {
-        key: "GOOGLE_VERTEX_THINKING_LEVEL",
-        group: "providers",
-        provider: "vertexai",
-        type: "enum",
-        label: "Thinking Level (Gemini 3)",
-        options: ["minimal", "low", "medium", "high"],
-    },
-
-    // ── Providers: Azure OpenAI ──────────────────────────────────────
-    {
-        key: "AZURE_API_KEY",
-        group: "providers",
-        provider: "azure",
-        type: "secret",
-        label: "API Key",
-    },
-    {
-        key: "AZURE_RESOURCE_NAME",
-        group: "providers",
-        provider: "azure",
-        type: "string",
-        label: "Resource Name",
-        description: "Endpoint becomes https://{name}.openai.azure.com.",
-    },
-    {
-        key: "AZURE_BASE_URL",
-        group: "providers",
-        provider: "azure",
-        type: "string",
-        label: "Base URL",
-        description: "Alternative to resource name; takes precedence.",
-    },
-    {
-        key: "AZURE_REASONING_EFFORT",
-        group: "providers",
-        provider: "azure",
-        type: "enum",
-        label: "Reasoning Effort",
-        options: ["low", "medium", "high"],
-    },
-    {
-        key: "AZURE_REASONING_SUMMARY",
-        group: "providers",
-        provider: "azure",
-        type: "enum",
-        label: "Reasoning Summary",
-        options: ["none", "brief", "detailed"],
-    },
-
-    // ── Providers: Ollama ────────────────────────────────────────────
-    {
-        key: "OLLAMA_BASE_URL",
-        group: "providers",
-        provider: "ollama",
-        type: "string",
-        label: "Base URL",
-        placeholder: PROVIDER_INFO.ollama.defaultBaseUrl,
-    },
-    {
-        key: "OLLAMA_API_KEY",
-        group: "providers",
-        provider: "ollama",
-        type: "secret",
-        label: "API Key",
-        description: "For Ollama Cloud or authenticated remote instances.",
-    },
-    {
-        key: "OLLAMA_ENABLE_THINKING",
-        group: "providers",
-        provider: "ollama",
-        type: "boolean",
-        label: "Enable Thinking",
-    },
-
-    ...simpleProviderSettings(),
-
-    // ── Model Behavior ───────────────────────────────────────────────
+    // ── Generation ───────────────────────────────────────────────────
     {
         key: "TEMPERATURE",
-        group: "models",
+        group: "generation",
         type: "number",
         label: "Temperature",
         description:
@@ -450,26 +80,10 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     },
     {
         key: "MAX_OUTPUT_TOKENS",
-        group: "models",
+        group: "generation",
         type: "number",
         label: "Max Output Tokens",
         min: 1,
-    },
-    {
-        key: "AI_MODELS_CONFIG",
-        group: "models",
-        type: "json",
-        label: "Multi-Model Registry (JSON)",
-        description:
-            'Server model list shown to all users. Schema: {"providers":[{"name":"…","provider":"openai","models":["…"]}]}.',
-    },
-    {
-        key: "AI_MODELS_CONFIG_PATH",
-        group: "models",
-        type: "string",
-        label: "Model Registry File Path",
-        description: "Used only when the JSON registry above is empty.",
-        placeholder: "./ai-models.json",
     },
 
     // ── Access Control ───────────────────────────────────────────────
@@ -608,12 +222,3 @@ export const SETTINGS_BY_GROUP: Map<string, SettingDef[]> = new Map(
         SETTINGS_REGISTRY.filter((d) => d.group === g.id),
     ]),
 )
-
-// Provider Credentials group, keyed by provider in registry order
-export const PROVIDER_SUBGROUPS: Map<ProviderName, SettingDef[]> = new Map()
-for (const def of SETTINGS_REGISTRY) {
-    if (!def.provider) continue
-    const list = PROVIDER_SUBGROUPS.get(def.provider) ?? []
-    list.push(def)
-    PROVIDER_SUBGROUPS.set(def.provider, list)
-}

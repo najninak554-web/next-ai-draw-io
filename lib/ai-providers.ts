@@ -537,7 +537,7 @@ function buildProviderOptions(
 }
 
 // Map of provider to required environment variable
-const PROVIDER_ENV_VARS: Record<ProviderName, string | null> = {
+export const PROVIDER_ENV_VARS: Record<ProviderName, string | null> = {
     bedrock: null, // AWS SDK auto-uses IAM role on AWS, or env vars locally
     openai: "OPENAI_API_KEY",
     anthropic: "ANTHROPIC_API_KEY",

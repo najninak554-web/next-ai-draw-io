@@ -228,11 +228,12 @@ Administrators can configure multiple server-side models that are available to a
 
 ### Admin Panel
 
-Instead of hand-editing `.env`, you can manage most server settings (provider keys, model behavior, access codes, quota, features) in a web admin panel:
+Instead of hand-editing `.env`, you can manage server settings in a web admin panel:
 
 1. Set the `ADMIN_PASSWORD` environment variable (leave unset to disable the panel).
 2. Visit `/admin` and sign in.
-3. Saved settings are written to `data/settings.json` and apply immediately — no restart needed (a few settings such as Langfuse and DynamoDB are marked "Restart Required").
+3. In the Models section, add providers with their API keys and model lists — the same UI as the in-app model settings. Saved models become server-side models available to all users, and credentials plus `AI_MODELS_CONFIG` are generated automatically.
+4. Other sections cover access codes, generation parameters, features, observability, and quota. Saved settings are written to `data/settings.json` and apply immediately — no restart needed (a few settings such as Langfuse and DynamoDB are marked "Restart Required").
 
 Precedence: settings saved in the panel override environment variables, which override built-in defaults. Removing a saved value falls back to the environment variable.
 
