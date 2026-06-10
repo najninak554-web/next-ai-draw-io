@@ -34,6 +34,9 @@ export interface SettingGroup {
     id: string
     title: string
     description: string
+    // Optional sections gated by an on/off switch in the panel; fields are
+    // grayed out until enabled. Starts on when any field is already set.
+    toggleable?: boolean
 }
 
 export const SETTING_GROUPS: SettingGroup[] = [
@@ -59,12 +62,6 @@ export const SETTING_GROUPS: SettingGroup[] = [
         description: "Restrict who can use this deployment.",
     },
     {
-        id: "quota",
-        title: "Quota & Rate Limits",
-        description:
-            "Per-IP usage limits. Enforcement requires a DynamoDB table.",
-    },
-    {
         id: "features",
         title: "Features",
         description: "Optional features and security toggles.",
@@ -73,6 +70,14 @@ export const SETTING_GROUPS: SettingGroup[] = [
         id: "observability",
         title: "Observability",
         description: "Langfuse tracing for LLM calls.",
+        toggleable: true,
+    },
+    {
+        id: "quota",
+        title: "Quota & Rate Limits",
+        description:
+            "Per-IP usage limits. Enforcement requires a DynamoDB table.",
+        toggleable: true,
     },
 ]
 

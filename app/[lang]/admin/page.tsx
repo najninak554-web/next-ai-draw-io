@@ -375,6 +375,11 @@ export default function AdminPage() {
     const [saveMessage, setSaveMessage] = useState("")
     const [justSaved, setJustSaved] = useState(false)
     const [activeGroup, setActiveGroup] = useState(SETTING_GROUPS[0].id)
+    // Toggleable groups (quota, observability): off by default, on when
+    // any of their fields is already configured
+    const [enabledGroups, setEnabledGroups] = useState<Record<string, boolean>>(
+        {},
+    )
     const mainRef = useRef<HTMLDivElement>(null)
 
     const dirtyCount = Object.keys(pending).length
@@ -399,6 +404,20 @@ export default function AdminPage() {
             const map: SettingsMap = {}
             for (const s of data.settings) map[s.key] = s
             setSettings(map)
+            // Turn a toggleable group on when any of its fields is set
+            setEnabledGroups((prev) => {
+                const next = { ...prev }
+                for (const group of SETTING_GROUPS) {
+                    if (!group.toggleable) continue
+                    const configured = SETTINGS_REGISTRY.some(
+                        (d) =>
+                            d.group === group.id &&
+                            map[d.key]?.source !== "default",
+                    )
+                    if (configured) next[group.id] = true
+                }
+                return next
+            })
         },
         [],
     )
@@ -688,22 +707,46 @@ export default function AdminPage() {
                         const defs = SETTINGS_REGISTRY.filter(
                             (d) => d.group === group.id,
                         )
+                        const groupOff =
+                            group.toggleable && !enabledGroups[group.id]
+                        const fieldsDisabled = !writable || !!groupOff
                         return (
                             <section
                                 key={group.id}
                                 aria-labelledby={group.id}
                                 className="mb-10"
                             >
-                                <h2
-                                    id={group.id}
-                                    className="scroll-mt-20 text-base font-semibold"
-                                >
-                                    {group.title}
-                                </h2>
+                                <div className="flex items-center justify-between gap-4">
+                                    <h2
+                                        id={group.id}
+                                        className="scroll-mt-20 text-base font-semibold"
+                                    >
+                                        {group.title}
+                                    </h2>
+                                    {group.toggleable && (
+                                        <Switch
+                                            checked={!!enabledGroups[group.id]}
+                                            disabled={!writable}
+                                            aria-label={`Enable ${group.title}`}
+                                            onCheckedChange={(checked) =>
+                                                setEnabledGroups((prev) => ({
+                                                    ...prev,
+                                                    [group.id]: checked,
+                                                }))
+                                            }
+                                        />
+                                    )}
+                                </div>
                                 <p className="mb-3 mt-1 text-sm text-muted-foreground text-pretty">
                                     {group.description}
                                 </p>
-                                <div className="rounded-lg border bg-card px-4">
+                                <div
+                                    className={cn(
+                                        "rounded-lg border bg-card px-4",
+                                        groupOff &&
+                                            "pointer-events-none opacity-50",
+                                    )}
+                                >
                                     {group.id === "providers"
                                         ? [...providerSubgroups.entries()].map(
                                               ([name, subDefs]) => (
@@ -728,7 +771,7 @@ export default function AdminPage() {
                                                       pending[def.key]
                                                   }
                                                   error={errors[def.key]}
-                                                  disabled={!writable}
+                                                  disabled={fieldsDisabled}
                                                   onChange={(v) =>
                                                       handleChange(def.key, v)
                                                   }
