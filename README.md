@@ -43,6 +43,8 @@ https://github.com/user-attachments/assets/9d60a3e8-4a1c-4b5e-acbb-26af2d3eabd1
     - [Deploy on Vercel](#deploy-on-vercel)
     - [Deploy on Cloudflare Workers](#deploy-on-cloudflare-workers)
   - [Multi-Provider Support](#multi-provider-support)
+    - [Server-Side Multi-Model Configuration](#server-side-multi-model-configuration)
+    - [Admin Panel](#admin-panel)
   - [How It Works](#how-it-works)
   - [Support \& Contact](#support--contact)
   - [FAQ](#faq)
@@ -223,6 +225,23 @@ All providers except AWS Bedrock and OpenRouter support custom endpoints.
 ### Server-Side Multi-Model Configuration
 
 Administrators can configure multiple server-side models that are available to all users without requiring personal API keys. Configure via `AI_MODELS_CONFIG` environment variable (JSON string) or `ai-models.json` file.
+
+### Admin Panel
+
+Instead of hand-editing `.env`, you can manage most server settings (provider keys, model behavior, access codes, quota, features) in a web admin panel:
+
+1. Set the `ADMIN_PASSWORD` environment variable (leave unset to disable the panel).
+2. Visit `/admin` and sign in.
+3. Saved settings are written to `data/settings.json` and apply immediately — no restart needed (a few settings such as Langfuse and DynamoDB are marked "Restart Required").
+
+Precedence: settings saved in the panel override environment variables, which override built-in defaults. Removing a saved value falls back to the environment variable.
+
+Notes:
+
+-   Secrets are stored in plaintext in `data/settings.json` (file mode 600). Keep the file private.
+-   On serverless platforms (Vercel, Cloudflare Workers) there is no persistent disk, so the panel is read-only — configure via environment variables there.
+-   With Docker, the `data/` directory is persisted via the volume in `docker-compose.yml`.
+-   `NEXT_PUBLIC_*` variables are baked in at build time and cannot be changed in the panel.
 
 **Model Requirements**: This task requires strong model capabilities for generating long-form text with strict formatting constraints (draw.io XML). Recommended models include Claude Sonnet 4.5, GPT-5.1, Gemini 3 Pro, and DeepSeek V3.2/R1.
 
