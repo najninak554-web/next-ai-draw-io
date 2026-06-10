@@ -724,17 +724,33 @@ export default function AdminPage() {
                                         {group.title}
                                     </h2>
                                     {group.toggleable && (
-                                        <Switch
-                                            checked={!!enabledGroups[group.id]}
-                                            disabled={!writable}
-                                            aria-label={`Enable ${group.title}`}
-                                            onCheckedChange={(checked) =>
-                                                setEnabledGroups((prev) => ({
-                                                    ...prev,
-                                                    [group.id]: checked,
-                                                }))
-                                            }
-                                        />
+                                        <label
+                                            className={cn(
+                                                "flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors motion-reduce:transition-none",
+                                                enabledGroups[group.id]
+                                                    ? "border-primary/30 bg-primary/5 text-primary"
+                                                    : "border-border bg-muted/50 text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                                            )}
+                                        >
+                                            {enabledGroups[group.id]
+                                                ? "Enabled"
+                                                : "Disabled"}
+                                            <Switch
+                                                checked={
+                                                    !!enabledGroups[group.id]
+                                                }
+                                                disabled={!writable}
+                                                aria-label={`Enable ${group.title}`}
+                                                onCheckedChange={(checked) =>
+                                                    setEnabledGroups(
+                                                        (prev) => ({
+                                                            ...prev,
+                                                            [group.id]: checked,
+                                                        }),
+                                                    )
+                                                }
+                                            />
+                                        </label>
                                     )}
                                 </div>
                                 <p className="mb-3 mt-1 text-sm text-muted-foreground text-pretty">
