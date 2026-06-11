@@ -146,23 +146,37 @@ function RestartBadge() {
     )
 }
 
-// Secret input: shows masked hint as placeholder, typing replaces
+// Secret input: shows masked hint as placeholder, typing replaces.
+// With keepOnEmpty, clearing the field reverts to the stored value
+// ("keep") instead of deleting it — explicit deletion is via the X button.
 function SecretInput({
     id,
     value,
     disabled,
+    keepOnEmpty,
     onChange,
 }: {
     id: string
     value: string | SecretValue | undefined
     disabled?: boolean
-    onChange: (value: string) => void
+    keepOnEmpty?: boolean
+    onChange: (value: string | SecretValue) => void
 }) {
     const [show, setShow] = useState(false)
+    // The stored marker as it was at mount, to revert to on empty
+    const [original] = useState(value)
+    const hadStored = isSecretValue(original)
     const text = typeof value === "string" ? value : ""
     const placeholder = isSecretValue(value)
         ? `Saved (${value.hint}) — type to replace`
         : "Not set"
+    const handleText = (t: string) => {
+        if (t === "" && keepOnEmpty && hadStored && original) {
+            onChange(original)
+        } else {
+            onChange(t)
+        }
+    }
     return (
         <div className="flex items-center gap-1">
             <Input
@@ -174,7 +188,7 @@ function SecretInput({
                 autoComplete="off"
                 placeholder={placeholder}
                 className="h-9 font-mono text-xs"
-                onChange={(e) => onChange(e.target.value)}
+                onChange={(e) => handleText(e.target.value)}
             />
             <Button
                 type="button"
@@ -190,6 +204,19 @@ function SecretInput({
                     <Eye className="h-4 w-4" aria-hidden="true" />
                 )}
             </Button>
+            {keepOnEmpty && (hadStored || text) && !disabled && (
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    aria-label="Remove value"
+                    title="Remove the stored value"
+                    onClick={() => onChange("")}
+                >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                </Button>
+            )}
         </div>
     )
 }
@@ -264,7 +291,9 @@ function SettingField({
                                 : (secretState ?? currentValue)
                         }
                         disabled={disabled}
-                        onChange={onChange}
+                        onChange={(v) =>
+                            onChange(typeof v === "string" ? v : "")
+                        }
                     />
                 </div>
             )
@@ -482,6 +511,7 @@ function ProviderDetail({
                     <CredField label="API Key">
                         <SecretInput
                             id={`apikey-${provider.id}`}
+                            keepOnEmpty
                             value={provider.apiKey}
                             disabled={disabled}
                             onChange={(v) => onUpdate({ apiKey: v })}
@@ -492,6 +522,7 @@ function ProviderDetail({
                     <CredField label="API Key (Express Mode)">
                         <SecretInput
                             id={`vertexkey-${provider.id}`}
+                            keepOnEmpty
                             value={provider.vertexApiKey}
                             disabled={disabled}
                             onChange={(v) => onUpdate({ vertexApiKey: v })}
@@ -503,6 +534,7 @@ function ProviderDetail({
                         <CredField label="AWS Access Key ID">
                             <SecretInput
                                 id={`awskey-${provider.id}`}
+                                keepOnEmpty
                                 value={provider.awsAccessKeyId}
                                 disabled={disabled}
                                 onChange={(v) =>
@@ -513,6 +545,7 @@ function ProviderDetail({
                         <CredField label="AWS Secret Access Key">
                             <SecretInput
                                 id={`awssecret-${provider.id}`}
+                                keepOnEmpty
                                 value={provider.awsSecretAccessKey}
                                 disabled={disabled}
                                 onChange={(v) =>
@@ -995,14 +1028,15 @@ export default function AdminPage() {
             const map: SettingsMap = {}
             for (const s of data.settings) map[s.key] = s
             setSettings(map)
+            // Seed each toggle once from whether the group has configured
+            // values; don't stomp a user's explicit toggle on later saves
             setEnabledGroups((prev) => {
                 const next = { ...prev }
                 for (const group of SETTING_GROUPS) {
-                    if (!group.toggleable) continue
-                    const configured = SETTINGS_BY_GROUP.get(group.id)?.some(
+                    if (!group.toggleable || group.id in next) continue
+                    next[group.id] = !!SETTINGS_BY_GROUP.get(group.id)?.some(
                         (d) => map[d.key]?.source !== "default",
                     )
-                    if (configured) next[group.id] = true
                 }
                 return next
             })
@@ -1116,6 +1150,32 @@ export default function AdminPage() {
         [settings],
     )
 
+    // Toggling a group off stages deletion of its saved values so the
+    // feature actually turns off on save; toggling on drops those deletions.
+    const handleGroupToggle = useCallback(
+        (groupId: string, enabled: boolean) => {
+            setSaveMessage(null)
+            setEnabledGroups((prev) => ({ ...prev, [groupId]: enabled }))
+            const keys = (SETTINGS_BY_GROUP.get(groupId) ?? []).map(
+                (d) => d.key,
+            )
+            setPending((prev) => {
+                const next = { ...prev }
+                for (const key of keys) {
+                    if (!enabled) {
+                        // Stage deletion only for values currently set
+                        if (settings[key]?.source !== "default")
+                            next[key] = null
+                    } else if (next[key] === null) {
+                        delete next[key]
+                    }
+                }
+                return next
+            })
+        },
+        [settings],
+    )
+
     const handleSave = useCallback(async () => {
         if (!authedPassword || dirtyCount === 0) return
         setSaving(true)
@@ -1131,14 +1191,27 @@ export default function AdminPage() {
                 applyProvidersResponse(data)
             }
             if (Object.keys(pending).length > 0) {
-                const data = await adminFetch(
-                    "/api/admin/settings",
-                    authedPassword,
-                    {
-                        method: "PUT",
-                        body: JSON.stringify({ values: pending }),
+                const res = await fetch(getApiEndpoint("/api/admin/settings"), {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-admin-password": authedPassword,
                     },
-                )
+                    body: JSON.stringify({ values: pending }),
+                })
+                const data = await res.json().catch(() => ({}))
+                if (!res.ok) {
+                    // Per-field validation errors come back as {errors: {...}}
+                    if (data.errors) {
+                        setErrors(data.errors)
+                        const firstKey = Object.keys(data.errors)[0]
+                        document.getElementById(`setting-${firstKey}`)?.focus()
+                        throw new Error("Some settings are invalid.")
+                    }
+                    throw new Error(
+                        data.error || `Request failed (${res.status})`,
+                    )
+                }
                 applySettingsResponse(data)
                 setPending({})
             }
@@ -1318,7 +1391,7 @@ export default function AdminPage() {
                             <ModelsSection
                                 providers={providers}
                                 envProviders={envProviders}
-                                disabled={!writable}
+                                disabled={!writable || saving}
                                 password={authedPassword}
                                 onChange={(next) => {
                                     setSaveMessage(null)
@@ -1333,7 +1406,7 @@ export default function AdminPage() {
                         const defs = SETTINGS_BY_GROUP.get(group.id) ?? []
                         const groupOff =
                             group.toggleable && !enabledGroups[group.id]
-                        const fieldsDisabled = !writable || !!groupOff
+                        const fieldsDisabled = !writable || saving || !!groupOff
                         return (
                             <section
                                 key={group.id}
@@ -1363,14 +1436,12 @@ export default function AdminPage() {
                                                 checked={
                                                     !!enabledGroups[group.id]
                                                 }
-                                                disabled={!writable}
+                                                disabled={!writable || saving}
                                                 aria-label={`Enable ${group.title}`}
                                                 onCheckedChange={(checked) =>
-                                                    setEnabledGroups(
-                                                        (prev) => ({
-                                                            ...prev,
-                                                            [group.id]: checked,
-                                                        }),
+                                                    handleGroupToggle(
+                                                        group.id,
+                                                        checked,
                                                     )
                                                 }
                                             />
@@ -1420,7 +1491,9 @@ export default function AdminPage() {
                                 "flex min-w-0 items-center gap-1.5 truncate text-sm",
                                 saveMessage?.ok
                                     ? "text-green-600 dark:text-green-400"
-                                    : "text-muted-foreground",
+                                    : saveMessage
+                                      ? "text-destructive"
+                                      : "text-muted-foreground",
                             )}
                         >
                             {saveMessage?.ok && (
@@ -1429,9 +1502,11 @@ export default function AdminPage() {
                                     aria-hidden="true"
                                 />
                             )}
-                            {dirtyCount > 0
-                                ? "Unsaved changes"
-                                : saveMessage?.text}
+                            {saveMessage && !saveMessage.ok
+                                ? saveMessage.text
+                                : dirtyCount > 0
+                                  ? "Unsaved changes"
+                                  : saveMessage?.text}
                         </p>
                         {dirtyCount > 0 && (
                             <div className="flex shrink-0 gap-2">

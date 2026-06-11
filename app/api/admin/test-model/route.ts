@@ -32,7 +32,20 @@ export async function POST(req: Request) {
         )
     }
 
-    const [resolved] = mergeSecrets([parsed.data], loadAdminProviders())
+    // SECURITY: a stored secret is only resolved from an {isSet} marker if
+    // the endpoint it would be sent to (provider + baseUrl) still matches
+    // the stored entry. Otherwise a tampered baseUrl could exfiltrate the
+    // stored key to an arbitrary host. Mismatches must re-supply plaintext.
+    const stored = loadAdminProviders().find((p) => p.id === parsed.data.id)
+    const sameEndpoint =
+        stored &&
+        stored.provider === parsed.data.provider &&
+        (stored.baseUrl ?? "") === (parsed.data.baseUrl ?? "") &&
+        (stored.awsRegion ?? "") === (parsed.data.awsRegion ?? "")
+    const [resolved] = mergeSecrets(
+        [parsed.data],
+        sameEndpoint && stored ? [stored] : [],
+    )
 
     return validateModel(
         new Request(new URL("/api/validate-model", req.url), {

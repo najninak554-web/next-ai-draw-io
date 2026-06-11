@@ -17,15 +17,21 @@ async function payload() {
     // Env-based providers (AI_MODELS_CONFIG / ai-models.json) are shown
     // read-only in the panel; their credentials live in the environment
     const envConfig = await loadEnvServerModelsConfig()
+    const adminProviders = loadAdminProviders()
+    // A panel default overrides any env default (matches the merge in
+    // loadRawServerModelsConfig), so env stars must reflect that
+    const adminHasDefault = adminProviders.some(
+        (p) => p.isDefault && p.models.length > 0,
+    )
     return {
         writable: isSettingsWritable(),
-        providers: maskAdminProviders(loadAdminProviders()),
+        providers: maskAdminProviders(adminProviders),
         envProviders:
             envConfig?.providers.map((p) => ({
                 name: p.name,
                 provider: p.provider,
                 models: p.models,
-                isDefault: !!p.default,
+                isDefault: !!p.default && !adminHasDefault,
             })) ?? [],
     }
 }
