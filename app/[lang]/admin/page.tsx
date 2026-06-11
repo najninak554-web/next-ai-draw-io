@@ -45,6 +45,7 @@ import {
 } from "@/lib/admin/settings-registry"
 import { getApiEndpoint } from "@/lib/base-path"
 import {
+    FIXED_CRED_PROVIDERS,
     PROVIDER_INFO,
     type ProviderName,
     SUGGESTED_MODELS,
@@ -854,14 +855,33 @@ function ModelsSection({
                         </SelectTrigger>
                         <SelectContent className="max-h-72">
                             {(Object.keys(PROVIDER_INFO) as ProviderName[]).map(
-                                (p) => (
-                                    <SelectItem key={p} value={p}>
-                                        <div className="flex items-center gap-2">
-                                            <ProviderLogo provider={p} />
-                                            {PROVIDER_INFO[p].label}
-                                        </div>
-                                    </SelectItem>
-                                ),
+                                (p) => {
+                                    // Global-credential providers already in
+                                    // the env config can't be added here —
+                                    // panel credentials would override theirs
+                                    const envBlocked =
+                                        FIXED_CRED_PROVIDERS.includes(p) &&
+                                        envProviders.some(
+                                            (e) => e.provider === p,
+                                        )
+                                    return (
+                                        <SelectItem
+                                            key={p}
+                                            value={p}
+                                            disabled={envBlocked}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <ProviderLogo provider={p} />
+                                                {PROVIDER_INFO[p].label}
+                                                {envBlocked && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        (managed via env)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </SelectItem>
+                                    )
+                                },
                             )}
                         </SelectContent>
                     </Select>

@@ -244,11 +244,56 @@ describe("loadRawServerModelsConfig merge", () => {
 describe("validateAdminProviders", () => {
     it("rejects names clashing with env-configured providers", () => {
         expect(
-            validateAdminProviders(
-                [provider({ name: "Env OpenAI" })],
-                ["Env OpenAI"],
-            ),
+            validateAdminProviders([provider({ name: "Env OpenAI" })], {
+                providers: [
+                    {
+                        name: "Env OpenAI",
+                        provider: "openai",
+                        models: ["gpt-x"],
+                    },
+                ],
+            }),
         ).toMatch(/already defined/)
+    })
+
+    it("rejects a global-credential provider already in the env config", () => {
+        expect(
+            validateAdminProviders(
+                [
+                    provider({
+                        provider: "bedrock",
+                        apiKey: undefined,
+                        awsAccessKeyId: "AKIA-panel",
+                        awsSecretAccessKey: "panel-secret",
+                        awsRegion: "us-east-1",
+                        models: ["claude-x"],
+                    }),
+                ],
+                {
+                    providers: [
+                        {
+                            name: "Env Bedrock",
+                            provider: "bedrock",
+                            models: ["claude-env"],
+                        },
+                    ],
+                },
+            ),
+        ).toMatch(/shares global credentials/)
+    })
+
+    it("allows a normal provider type alongside the same env type", () => {
+        expect(
+            validateAdminProviders([provider({ name: "Panel OpenAI" })], {
+                providers: [
+                    {
+                        name: "Env OpenAI",
+                        provider: "openai",
+                        models: ["gpt-x"],
+                    },
+                ],
+            }),
+        ).toBeNull()
     })
 
     it("rejects two bedrock instances", () => {

@@ -72,8 +72,7 @@ export async function PUT(req: Request) {
     const merged = mergeSecrets(parsed.data, stored)
 
     const envConfig = await loadEnvServerModelsConfig()
-    const envNames = envConfig?.providers.map((p) => p.name) ?? []
-    const validationError = validateAdminProviders(merged, envNames)
+    const validationError = validateAdminProviders(merged, envConfig)
     if (validationError) {
         return Response.json({ error: validationError }, { status: 400 })
     }

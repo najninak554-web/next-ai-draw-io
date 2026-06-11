@@ -85,6 +85,15 @@ export interface FlattenedModel {
     baseUrlEnv?: string
 }
 
+// Providers whose server credentials live in fixed env vars
+// (AWS_ACCESS_KEY_ID, GOOGLE_VERTEX_API_KEY, OLLAMA_API_KEY) with no
+// apiKeyEnv redirection support — their credentials are global
+export const FIXED_CRED_PROVIDERS: ProviderName[] = [
+    "bedrock",
+    "vertexai",
+    "ollama",
+]
+
 // Map provider names to models.dev logo names
 export const PROVIDER_LOGO_MAP: Record<string, string> = {
     openai: "openai",
