@@ -1,45 +1,52 @@
 import { POST as validateModel } from "@/app/api/validate-model/route"
 import { checkAdminAuth } from "@/lib/admin/auth"
-import { loadAdminProviders } from "@/lib/admin/providers"
+import {
+    AdminProviderSchema,
+    loadAdminProviders,
+    mergeSecrets,
+} from "@/lib/admin/providers"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-// Test a stored admin provider's model. The client only has masked
-// secrets, so credentials are filled in server-side from settings.json
-// and passed to the existing validate-model handler.
+// Test a model with the client's CURRENT provider state (which may be
+// unsaved). Secret fields arrive either as plaintext (newly typed) or as
+// masked {isSet} markers, which are resolved against settings.json — so
+// testing works both before and after saving.
 export async function POST(req: Request) {
     const authError = checkAdminAuth(req)
     if (authError) return authError
 
-    let body: { providerId?: string; modelId?: string }
+    let body: { provider?: unknown; modelId?: string }
     try {
         body = await req.json()
     } catch {
         return Response.json({ error: "Invalid JSON body" }, { status: 400 })
     }
 
-    const stored = loadAdminProviders().find((p) => p.id === body.providerId)
-    if (!stored || !body.modelId) {
+    const parsed = AdminProviderSchema.safeParse(body.provider)
+    if (!parsed.success || !body.modelId) {
         return Response.json(
-            { valid: false, error: "Unknown provider or model" },
+            { valid: false, error: "Invalid provider or model" },
             { status: 400 },
         )
     }
+
+    const [resolved] = mergeSecrets([parsed.data], loadAdminProviders())
 
     return validateModel(
         new Request(new URL("/api/validate-model", req.url), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                provider: stored.provider,
-                apiKey: stored.apiKey,
-                baseUrl: stored.baseUrl,
+                provider: resolved.provider,
+                apiKey: resolved.apiKey,
+                baseUrl: resolved.baseUrl,
                 modelId: body.modelId,
-                awsAccessKeyId: stored.awsAccessKeyId,
-                awsSecretAccessKey: stored.awsSecretAccessKey,
-                awsRegion: stored.awsRegion,
-                vertexApiKey: stored.vertexApiKey,
+                awsAccessKeyId: resolved.awsAccessKeyId,
+                awsSecretAccessKey: resolved.awsSecretAccessKey,
+                awsRegion: resolved.awsRegion,
+                vertexApiKey: resolved.vertexApiKey,
             }),
         }),
     )

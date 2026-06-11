@@ -384,7 +384,7 @@ function ProviderDetail({
         try {
             const data = await adminFetch("/api/admin/test-model", password, {
                 method: "POST",
-                body: JSON.stringify({ providerId: provider.id, modelId }),
+                body: JSON.stringify({ provider, modelId }),
             })
             setTestResults((prev) => ({
                 ...prev,
@@ -693,10 +693,6 @@ function ProviderDetail({
                         </ul>
                     )}
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                    Note: Test runs against saved credentials — save your
-                    changes first.
-                </p>
             </div>
 
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
