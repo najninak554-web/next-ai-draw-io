@@ -62,7 +62,7 @@ function getConfigPath(): string {
     return path.join(process.cwd(), "ai-models.json")
 }
 
-export async function loadRawServerModelsConfig(): Promise<ServerModelsConfig | null> {
+export async function loadEnvServerModelsConfig(): Promise<ServerModelsConfig | null> {
     // Priority 1: AI_MODELS_CONFIG env var (JSON string) - for cloud deployments
     const envConfig = process.env.AI_MODELS_CONFIG
     if (envConfig && envConfig.trim().length > 0) {
@@ -94,6 +94,40 @@ export async function loadRawServerModelsConfig(): Promise<ServerModelsConfig | 
         )
         return null
     }
+}
+
+export async function loadRawServerModelsConfig(): Promise<ServerModelsConfig | null> {
+    const envConfig = await loadEnvServerModelsConfig()
+
+    // Merge in providers managed via the admin panel (settings.json).
+    // Dynamic import to avoid a module-init cycle with lib/admin/providers.
+    let adminConfig: ServerModelsConfig | null = null
+    try {
+        const { adminProvidersToConfig, loadAdminProviders } = await import(
+            "./admin/providers"
+        )
+        const adminProviders = loadAdminProviders()
+        if (adminProviders.length > 0) {
+            adminConfig = adminProvidersToConfig(adminProviders)
+        }
+    } catch (err) {
+        console.error(
+            "[server-model-config] Failed to load admin providers:",
+            err,
+        )
+    }
+
+    if (!adminConfig || adminConfig.providers.length === 0) return envConfig
+    if (!envConfig) return adminConfig
+
+    // A panel default overrides an env default
+    const adminHasDefault = adminConfig.providers.some((p) => p.default)
+    const envProviders = adminHasDefault
+        ? envConfig.providers.map((p) =>
+              p.default ? { ...p, default: undefined } : p,
+          )
+        : envConfig.providers
+    return { providers: [...envProviders, ...adminConfig.providers] }
 }
 
 export async function loadFlattenedServerModels(): Promise<

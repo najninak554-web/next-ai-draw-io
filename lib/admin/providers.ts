@@ -8,9 +8,14 @@ import { type MaskedSecret, maskSecret } from "./auth"
 import { loadSettings } from "./settings"
 
 // Admin-configured providers, mirroring the user ModelConfigDialog's data
-// model but stored server-side. The list itself is stored in settings.json
-// under ADMIN_PROVIDERS; on save we derive AI_MODELS_CONFIG plus the
-// credential env vars so the existing runtime picks everything up unchanged.
+// model but stored server-side (settings.json, ADMIN_PROVIDERS key).
+//
+// They COEXIST with an env-based AI_MODELS_CONFIG / ai-models.json:
+// loadRawServerModelsConfig() merges the env baseline with the panel's
+// providers at read time, so .env stays authoritative for its own entries.
+// Panel credentials are written to ADMIN_-prefixed env vars (wired up via
+// apiKeyEnv/baseUrlEnv) so they never shadow standard vars like
+// OPENAI_API_KEY that env-based entries may rely on.
 
 export const ADMIN_PROVIDERS_KEY = "ADMIN_PROVIDERS"
 
@@ -60,30 +65,26 @@ const SECRET_FIELDS = [
     "vertexApiKey",
 ] as const
 
-// Default credential env vars per provider (first instance). Later
-// instances of the same provider get a _2/_3 suffix wired up via
-// apiKeyEnv/baseUrlEnv in the generated AI_MODELS_CONFIG.
-// bedrock/vertexai use fixed env vars the runtime reads directly,
-// so only one instance of each can carry server credentials.
-const CRED_ENV: Partial<Record<ProviderName, { key: string; url: string }>> = {
-    openai: { key: "OPENAI_API_KEY", url: "OPENAI_BASE_URL" },
-    anthropic: { key: "ANTHROPIC_API_KEY", url: "ANTHROPIC_BASE_URL" },
-    google: { key: "GOOGLE_GENERATIVE_AI_API_KEY", url: "GOOGLE_BASE_URL" },
-    azure: { key: "AZURE_API_KEY", url: "AZURE_BASE_URL" },
-    ollama: { key: "OLLAMA_API_KEY", url: "OLLAMA_BASE_URL" },
-    openrouter: { key: "OPENROUTER_API_KEY", url: "OPENROUTER_BASE_URL" },
-    deepseek: { key: "DEEPSEEK_API_KEY", url: "DEEPSEEK_BASE_URL" },
-    siliconflow: { key: "SILICONFLOW_API_KEY", url: "SILICONFLOW_BASE_URL" },
-    sglang: { key: "SGLANG_API_KEY", url: "SGLANG_BASE_URL" },
-    gateway: { key: "AI_GATEWAY_API_KEY", url: "AI_GATEWAY_BASE_URL" },
-    doubao: { key: "DOUBAO_API_KEY", url: "DOUBAO_BASE_URL" },
-    modelscope: { key: "MODELSCOPE_API_KEY", url: "MODELSCOPE_BASE_URL" },
-    glm: { key: "GLM_API_KEY", url: "GLM_BASE_URL" },
-    qwen: { key: "QWEN_API_KEY", url: "QWEN_BASE_URL" },
-    kimi: { key: "KIMI_API_KEY", url: "KIMI_BASE_URL" },
-    qiniu: { key: "QINIU_API_KEY", url: "QINIU_BASE_URL" },
-    minimax: { key: "MINIMAX_API_KEY", url: "MINIMAX_BASE_URL" },
-    novita: { key: "NOVITA_API_KEY", url: "NOVITA_BASE_URL" },
+// Providers whose credentials the runtime reads from fixed env vars
+// (no apiKeyEnv support), so the panel writes those vars directly and
+// only one instance of each is allowed. edgeone needs no credentials.
+const FIXED_CRED_PROVIDERS: ProviderName[] = ["bedrock", "vertexai", "ollama"]
+
+// ADMIN_-prefixed env var names for instance `index` (0-based) of a provider
+function credEnvNames(
+    provider: ProviderName,
+    index: number,
+): { key?: string; url?: string } {
+    if (FIXED_CRED_PROVIDERS.includes(provider) || provider === "edgeone") {
+        return {}
+    }
+    const prefix =
+        provider === "gateway" ? "AI_GATEWAY" : provider.toUpperCase()
+    const suffix = index === 0 ? "" : `_${index + 1}`
+    return {
+        key: `ADMIN_${prefix}_API_KEY${suffix}`,
+        url: `ADMIN_${prefix}_BASE_URL${suffix}`,
+    }
 }
 
 export function loadAdminProviders(): StoredAdminProvider[] {
@@ -144,10 +145,15 @@ export function mergeSecrets(
     })
 }
 
+function displayName(p: StoredAdminProvider): string {
+    return p.name?.trim() || PROVIDER_INFO[p.provider].label
+}
+
 export function validateAdminProviders(
     list: StoredAdminProvider[],
+    envProviderNames: string[] = [],
 ): string | null {
-    for (const single of ["bedrock", "vertexai"] as const) {
+    for (const single of FIXED_CRED_PROVIDERS) {
         if (list.filter((p) => p.provider === single).length > 1) {
             return `Only one ${PROVIDER_INFO[single].label} provider is supported (its credentials use fixed environment variables).`
         }
@@ -156,29 +162,43 @@ export function validateAdminProviders(
     if (new Set(names).size !== names.length) {
         return "Provider display names must be unique."
     }
+    const envNames = new Set(envProviderNames)
+    const clash = names.find((n) => envNames.has(n))
+    if (clash) {
+        return `"${clash}" is already defined in AI_MODELS_CONFIG / ai-models.json. Use a different display name.`
+    }
     if (list.filter((p) => p.isDefault).length > 1) {
         return "Only one provider can be the default."
     }
     return null
 }
 
-function displayName(p: StoredAdminProvider): string {
-    return p.name?.trim() || PROVIDER_INFO[p.provider].label
+// The panel's contribution to the server models config, derived at read
+// time and merged with the env baseline by loadRawServerModelsConfig().
+export function adminProvidersToConfig(
+    list: StoredAdminProvider[],
+): ServerModelsConfig {
+    const config: ServerModelsConfig = { providers: [] }
+    const indexByProvider = new Map<ProviderName, number>()
+    for (const p of list) {
+        const index = indexByProvider.get(p.provider) ?? 0
+        indexByProvider.set(p.provider, index + 1)
+        if (p.models.length === 0) continue
+        const env = credEnvNames(p.provider, index)
+        config.providers.push({
+            name: displayName(p),
+            provider: p.provider,
+            models: p.models,
+            ...(env.key && p.apiKey ? { apiKeyEnv: env.key } : {}),
+            ...(env.url && p.baseUrl ? { baseUrlEnv: env.url } : {}),
+            ...(p.isDefault ? { default: true } : {}),
+        })
+    }
+    return config
 }
 
-// Env var names for instance `index` (0-based) of a provider
-function credEnvNames(
-    provider: ProviderName,
-    index: number,
-): { key?: string; url?: string } {
-    const base = CRED_ENV[provider]
-    if (!base) return {}
-    if (index === 0) return base
-    return { key: `${base.key}_${index + 1}`, url: `${base.url}_${index + 1}` }
-}
-
-// All env updates derived from the provider list: credential vars,
-// AI_MODELS_CONFIG, and AI_PROVIDER/AI_MODEL for the default model.
+// Settings updates derived from the provider list: credential env vars,
+// the stored list itself, and AI_PROVIDER/AI_MODEL when a default is set.
 // Keys derived from `previous` but absent now are set to null (removed,
 // falling back to the environment).
 export function deriveEnvUpdates(
@@ -190,9 +210,7 @@ export function deriveEnvUpdates(
     // Clear everything the previous list owned, then overwrite below
     for (const key of derivedEnvKeys(previous)) updates[key] = null
 
-    const config: ServerModelsConfig = { providers: [] }
     const indexByProvider = new Map<ProviderName, number>()
-
     for (const p of list) {
         const index = indexByProvider.get(p.provider) ?? 0
         indexByProvider.set(p.provider, index + 1)
@@ -205,51 +223,32 @@ export function deriveEnvUpdates(
         } else if (p.provider === "vertexai") {
             if (p.vertexApiKey) updates.GOOGLE_VERTEX_API_KEY = p.vertexApiKey
             if (p.baseUrl) updates.GOOGLE_VERTEX_BASE_URL = p.baseUrl
-        }
-
-        const env = credEnvNames(p.provider, index)
-        if (env.key && p.apiKey) updates[env.key] = p.apiKey
-        if (env.url && p.baseUrl) updates[env.url] = p.baseUrl
-
-        if (p.models.length > 0) {
-            config.providers.push({
-                name: displayName(p),
-                provider: p.provider,
-                models: p.models,
-                // First instances use the default env vars the runtime
-                // already falls back to; only extras need explicit wiring
-                ...(index > 0 && env.key && p.apiKey
-                    ? { apiKeyEnv: env.key }
-                    : {}),
-                ...(index > 0 && env.url && p.baseUrl
-                    ? { baseUrlEnv: env.url }
-                    : {}),
-                ...(p.isDefault ? { default: true } : {}),
-            })
+        } else if (p.provider === "ollama") {
+            if (p.apiKey) updates.OLLAMA_API_KEY = p.apiKey
+            if (p.baseUrl) updates.OLLAMA_BASE_URL = p.baseUrl
+        } else {
+            const env = credEnvNames(p.provider, index)
+            if (env.key && p.apiKey) updates[env.key] = p.apiKey
+            if (env.url && p.baseUrl) updates[env.url] = p.baseUrl
         }
     }
 
-    if (config.providers.length > 0) {
-        updates[ADMIN_PROVIDERS_KEY] = JSON.stringify(list)
-        updates.AI_MODELS_CONFIG = JSON.stringify(config)
-        const defaultEntry =
-            list.find((p) => p.isDefault && p.models.length > 0) ??
-            list.find((p) => p.models.length > 0)
-        if (defaultEntry) {
-            updates.AI_PROVIDER = defaultEntry.provider
-            updates.AI_MODEL = defaultEntry.models[0]
-        }
-    } else if (list.length > 0) {
-        // Providers configured but no models yet — keep the list only
-        updates[ADMIN_PROVIDERS_KEY] = JSON.stringify(list)
-    } else {
-        updates[ADMIN_PROVIDERS_KEY] = null
+    updates[ADMIN_PROVIDERS_KEY] = list.length > 0 ? JSON.stringify(list) : null
+
+    // The panel's default also becomes the server-wide default model;
+    // without one, the env-configured default applies.
+    const defaultEntry = list.find((p) => p.isDefault && p.models.length > 0)
+    if (defaultEntry) {
+        updates.AI_PROVIDER = defaultEntry.provider
+        updates.AI_MODEL = defaultEntry.models[0]
     }
 
     return updates
 }
 
-// Every settings key the panel may have written for a given list
+// Every settings key the panel may have written for a given list.
+// AI_MODELS_CONFIG is included to clean up values written by older
+// versions of the panel (it is no longer written).
 function derivedEnvKeys(list: StoredAdminProvider[]): string[] {
     const keys = new Set<string>([
         "AI_MODELS_CONFIG",
@@ -267,10 +266,14 @@ function derivedEnvKeys(list: StoredAdminProvider[]): string[] {
         } else if (p.provider === "vertexai") {
             keys.add("GOOGLE_VERTEX_API_KEY")
             keys.add("GOOGLE_VERTEX_BASE_URL")
+        } else if (p.provider === "ollama") {
+            keys.add("OLLAMA_API_KEY")
+            keys.add("OLLAMA_BASE_URL")
+        } else {
+            const env = credEnvNames(p.provider, index)
+            if (env.key) keys.add(env.key)
+            if (env.url) keys.add(env.url)
         }
-        const env = credEnvNames(p.provider, index)
-        if (env.key) keys.add(env.key)
-        if (env.url) keys.add(env.url)
     }
     return [...keys]
 }

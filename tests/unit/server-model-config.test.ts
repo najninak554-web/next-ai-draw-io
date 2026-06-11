@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { _resetForTests } from "@/lib/admin/settings"
 import {
     loadFlattenedServerModels,
     type ServerModelsConfig,
@@ -7,11 +8,20 @@ import {
 
 const ORIGINAL_ENV = { ...process.env }
 
+beforeEach(() => {
+    // Isolate from any local data/settings.json (admin panel providers
+    // are merged into the server models config)
+    process.env.SETTINGS_FILE = "/nonexistent/settings.json"
+    _resetForTests()
+})
+
 afterEach(() => {
+    _resetForTests()
     process.env.AI_PROVIDER = ORIGINAL_ENV.AI_PROVIDER
     process.env.AI_MODEL = ORIGINAL_ENV.AI_MODEL
     process.env.AI_MODELS_CONFIG_PATH = ORIGINAL_ENV.AI_MODELS_CONFIG_PATH
     process.env.AI_MODELS_CONFIG = ORIGINAL_ENV.AI_MODELS_CONFIG
+    delete process.env.SETTINGS_FILE
 })
 
 describe("ServerModelsConfigSchema", () => {

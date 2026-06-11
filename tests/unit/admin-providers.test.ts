@@ -3,12 +3,14 @@ import os from "os"
 import path from "path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
+    adminProvidersToConfig,
     deriveEnvUpdates,
     mergeSecrets,
     type StoredAdminProvider,
     validateAdminProviders,
 } from "@/lib/admin/providers"
-import { _resetForTests } from "@/lib/admin/settings"
+import { _resetForTests, saveSettings } from "@/lib/admin/settings"
+import { loadRawServerModelsConfig } from "@/lib/server-model-config"
 
 let tmpDir: string
 
@@ -21,6 +23,7 @@ beforeEach(() => {
 afterEach(() => {
     _resetForTests()
     delete process.env.SETTINGS_FILE
+    delete process.env.AI_MODELS_CONFIG
     fs.rmSync(tmpDir, { recursive: true, force: true })
 })
 
@@ -37,14 +40,13 @@ function provider(
 }
 
 describe("deriveEnvUpdates", () => {
-    it("writes credential env vars and AI_MODELS_CONFIG", () => {
+    it("writes credentials to ADMIN_-prefixed env vars (never shadows standard vars)", () => {
         const updates = deriveEnvUpdates([provider()], [])
-        expect(updates.OPENAI_API_KEY).toBe("sk-test")
-        const config = JSON.parse(updates.AI_MODELS_CONFIG as string)
-        expect(config.providers).toHaveLength(1)
-        expect(config.providers[0].models).toEqual(["gpt-5.2"])
-        expect(updates.AI_PROVIDER).toBe("openai")
-        expect(updates.AI_MODEL).toBe("gpt-5.2")
+        expect(updates.ADMIN_OPENAI_API_KEY).toBe("sk-test")
+        expect(updates.OPENAI_API_KEY).toBeUndefined()
+        expect(JSON.parse(updates.ADMIN_PROVIDERS as string)).toHaveLength(1)
+        // AI_MODELS_CONFIG is no longer written (merged at read time)
+        expect(updates.AI_MODELS_CONFIG).toBeNull()
     })
 
     it("suffixes env vars for a second instance of the same provider", () => {
@@ -60,10 +62,8 @@ describe("deriveEnvUpdates", () => {
             ],
             [],
         )
-        expect(updates.OPENAI_API_KEY).toBe("sk-test")
-        expect(updates.OPENAI_API_KEY_2).toBe("sk-second")
-        const config = JSON.parse(updates.AI_MODELS_CONFIG as string)
-        expect(config.providers[1].apiKeyEnv).toBe("OPENAI_API_KEY_2")
+        expect(updates.ADMIN_OPENAI_API_KEY).toBe("sk-test")
+        expect(updates.ADMIN_OPENAI_API_KEY_2).toBe("sk-second")
     })
 
     it("maps bedrock credentials to AWS env vars", () => {
@@ -88,12 +88,16 @@ describe("deriveEnvUpdates", () => {
     it("clears keys owned by the previous list when providers are removed", () => {
         const prev = [provider()]
         const updates = deriveEnvUpdates([], prev)
-        expect(updates.OPENAI_API_KEY).toBeNull()
+        expect(updates.ADMIN_OPENAI_API_KEY).toBeNull()
         expect(updates.AI_MODELS_CONFIG).toBeNull()
         expect(updates.ADMIN_PROVIDERS).toBeNull()
     })
 
-    it("respects the default flag for AI_PROVIDER/AI_MODEL", () => {
+    it("sets AI_PROVIDER/AI_MODEL only when a default is flagged", () => {
+        const noDefault = deriveEnvUpdates([provider()], [])
+        expect(noDefault.AI_PROVIDER).toBeNull()
+        expect(noDefault.AI_MODEL).toBeNull()
+
         const updates = deriveEnvUpdates(
             [
                 provider({ id: "p1" }),
@@ -108,8 +112,37 @@ describe("deriveEnvUpdates", () => {
         )
         expect(updates.AI_PROVIDER).toBe("deepseek")
         expect(updates.AI_MODEL).toBe("deepseek-chat")
-        const config = JSON.parse(updates.AI_MODELS_CONFIG as string)
-        expect(config.providers[1].default).toBe(true)
+    })
+})
+
+describe("adminProvidersToConfig", () => {
+    it("builds a config with ADMIN_-prefixed apiKeyEnv wiring", () => {
+        const config = adminProvidersToConfig([provider()])
+        expect(config.providers).toHaveLength(1)
+        expect(config.providers[0].models).toEqual(["gpt-5.2"])
+        expect(config.providers[0].apiKeyEnv).toBe("ADMIN_OPENAI_API_KEY")
+    })
+
+    it("wires suffixed env vars for a second instance", () => {
+        const config = adminProvidersToConfig([
+            provider({ id: "p1", name: "First" }),
+            provider({
+                id: "p2",
+                name: "Second",
+                apiKey: "sk-second",
+                models: ["gpt-5-mini"],
+            }),
+        ])
+        expect(config.providers[1].apiKeyEnv).toBe("ADMIN_OPENAI_API_KEY_2")
+    })
+
+    it("skips providers without models and carries the default flag", () => {
+        const config = adminProvidersToConfig([
+            provider({ id: "p1", models: [] }),
+            provider({ id: "p2", name: "D", isDefault: true }),
+        ])
+        expect(config.providers).toHaveLength(1)
+        expect(config.providers[0].default).toBe(true)
     })
 })
 
@@ -147,7 +180,77 @@ describe("mergeSecrets", () => {
     })
 })
 
+describe("loadRawServerModelsConfig merge", () => {
+    it("combines env AI_MODELS_CONFIG with panel providers", async () => {
+        process.env.AI_MODELS_CONFIG = JSON.stringify({
+            providers: [
+                {
+                    name: "Env OpenAI",
+                    provider: "openai",
+                    models: ["gpt-from-env"],
+                    default: true,
+                },
+            ],
+        })
+        saveSettings(deriveEnvUpdates([provider({ name: "Panel" })], []))
+
+        const merged = await loadRawServerModelsConfig()
+        expect(merged?.providers.map((p) => p.name)).toEqual([
+            "Env OpenAI",
+            "Panel",
+        ])
+        // Env default kept because panel set none
+        expect(merged?.providers[0].default).toBe(true)
+    })
+
+    it("panel default overrides the env default", async () => {
+        process.env.AI_MODELS_CONFIG = JSON.stringify({
+            providers: [
+                {
+                    name: "Env OpenAI",
+                    provider: "openai",
+                    models: ["gpt-from-env"],
+                    default: true,
+                },
+            ],
+        })
+        saveSettings(
+            deriveEnvUpdates(
+                [provider({ name: "Panel", isDefault: true })],
+                [],
+            ),
+        )
+
+        const merged = await loadRawServerModelsConfig()
+        expect(merged?.providers[0].default).toBeFalsy()
+        expect(merged?.providers[1].default).toBe(true)
+    })
+
+    it("returns only env config when the panel has no providers", async () => {
+        process.env.AI_MODELS_CONFIG = JSON.stringify({
+            providers: [
+                {
+                    name: "Env Only",
+                    provider: "openai",
+                    models: ["gpt-from-env"],
+                },
+            ],
+        })
+        const merged = await loadRawServerModelsConfig()
+        expect(merged?.providers.map((p) => p.name)).toEqual(["Env Only"])
+    })
+})
+
 describe("validateAdminProviders", () => {
+    it("rejects names clashing with env-configured providers", () => {
+        expect(
+            validateAdminProviders(
+                [provider({ name: "Env OpenAI" })],
+                ["Env OpenAI"],
+            ),
+        ).toMatch(/already defined/)
+    })
+
     it("rejects two bedrock instances", () => {
         const list = [
             provider({ id: "p1", provider: "bedrock" }),

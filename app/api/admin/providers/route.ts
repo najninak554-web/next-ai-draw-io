@@ -8,21 +8,32 @@ import {
     validateAdminProviders,
 } from "@/lib/admin/providers"
 import { isSettingsWritable, saveSettings } from "@/lib/admin/settings"
+import { loadEnvServerModelsConfig } from "@/lib/server-model-config"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function payload() {
+async function payload() {
+    // Env-based providers (AI_MODELS_CONFIG / ai-models.json) are shown
+    // read-only in the panel; their credentials live in the environment
+    const envConfig = await loadEnvServerModelsConfig()
     return {
         writable: isSettingsWritable(),
         providers: maskAdminProviders(loadAdminProviders()),
+        envProviders:
+            envConfig?.providers.map((p) => ({
+                name: p.name,
+                provider: p.provider,
+                models: p.models,
+                isDefault: !!p.default,
+            })) ?? [],
     }
 }
 
 export async function GET(req: Request) {
     const authError = checkAdminAuth(req)
     if (authError) return authError
-    return Response.json(payload())
+    return Response.json(await payload())
 }
 
 export async function PUT(req: Request) {
@@ -60,12 +71,14 @@ export async function PUT(req: Request) {
     const stored = loadAdminProviders()
     const merged = mergeSecrets(parsed.data, stored)
 
-    const validationError = validateAdminProviders(merged)
+    const envConfig = await loadEnvServerModelsConfig()
+    const envNames = envConfig?.providers.map((p) => p.name) ?? []
+    const validationError = validateAdminProviders(merged, envNames)
     if (validationError) {
         return Response.json({ error: validationError }, { status: 400 })
     }
 
     saveSettings(deriveEnvUpdates(merged, stored))
 
-    return Response.json(payload())
+    return Response.json(await payload())
 }
