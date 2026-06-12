@@ -170,18 +170,39 @@ export function SettingField({
 
     let control: React.ReactNode
     switch (def.type) {
-        case "boolean":
+        case "boolean": {
+            // When unset, reflect the built-in runtime default so the toggle
+            // matches actual behavior (e.g. ALLOW_PRIVATE_URLS defaults on).
+            const effective =
+                currentValue !== "" ? currentValue : (def.default ?? "false")
+            // A saved boolean can be cleared back to its env/default value.
+            const canClear =
+                (isDirty && pendingValue !== null) || source === "file"
             control = (
-                <Switch
-                    id={inputId}
-                    checked={currentValue === "true"}
-                    disabled={disabled}
-                    onCheckedChange={(checked) =>
-                        onChange(checked ? "true" : "false")
-                    }
-                />
+                <div className="flex items-center gap-3">
+                    <Switch
+                        id={inputId}
+                        checked={effective === "true"}
+                        disabled={disabled}
+                        onCheckedChange={(checked) =>
+                            onChange(checked ? "true" : "false")
+                        }
+                    />
+                    {canClear && !disabled && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-muted-foreground"
+                            onClick={() => onChange(null)}
+                        >
+                            {dict.admin.resetToDefault}
+                        </Button>
+                    )}
+                </div>
             )
             break
+        }
         case "enum":
             control = (
                 <Select

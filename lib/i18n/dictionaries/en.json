@@ -438,6 +438,7 @@
         "hideValue": "Hide value",
         "removeValue": "Remove value",
         "removeValueTitle": "Remove the stored value",
+        "resetToDefault": "Reset to default",
         "models": "Models",
         "modelsDescription": "Server-side providers and models available to all users — no personal API key needed. The default provider's first model is used when users don't pick one.",
         "addProviderHint": "Add a provider to offer server-side models to all users.",

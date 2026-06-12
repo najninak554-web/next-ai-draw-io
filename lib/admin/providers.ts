@@ -91,7 +91,13 @@ export function loadAdminProviders(): StoredAdminProvider[] {
     if (!raw) return []
     try {
         const parsed = JSON.parse(raw)
-        return Array.isArray(parsed) ? parsed : []
+        if (!Array.isArray(parsed)) return []
+        // Validate each entry's shape — a malformed/hand-edited value must
+        // not reach runtime code that assumes provider/models exist.
+        return parsed.flatMap((entry) => {
+            const result = AdminProviderSchema.safeParse(entry)
+            return result.success ? [result.data as StoredAdminProvider] : []
+        })
     } catch {
         console.error("[admin-providers] Failed to parse stored providers")
         return []

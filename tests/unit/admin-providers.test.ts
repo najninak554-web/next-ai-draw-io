@@ -3,8 +3,10 @@ import os from "os"
 import path from "path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
+    ADMIN_PROVIDERS_KEY,
     adminProvidersToConfig,
     deriveEnvUpdates,
+    loadAdminProviders,
     mergeSecrets,
     type StoredAdminProvider,
     validateAdminProviders,
@@ -326,5 +328,40 @@ describe("validateAdminProviders", () => {
             provider({ id: "p2", name: "Backup" }),
         ]
         expect(validateAdminProviders(list)).toBeNull()
+    })
+})
+
+describe("loadAdminProviders", () => {
+    it("returns [] when nothing is stored", () => {
+        expect(loadAdminProviders()).toEqual([])
+    })
+
+    it("loads valid stored providers", () => {
+        saveSettings({ [ADMIN_PROVIDERS_KEY]: JSON.stringify([provider()]) })
+        expect(loadAdminProviders()).toHaveLength(1)
+    })
+
+    it("drops malformed entries and keeps valid ones", () => {
+        saveSettings({
+            [ADMIN_PROVIDERS_KEY]: JSON.stringify([
+                provider({ id: "good" }),
+                { id: "missing-fields" }, // no provider/models
+                { provider: "openai", models: ["x"] }, // no id
+                "not-an-object",
+            ]),
+        })
+        const loaded = loadAdminProviders()
+        expect(loaded).toHaveLength(1)
+        expect(loaded[0].id).toBe("good")
+    })
+
+    it("returns [] when the stored value is not an array", () => {
+        saveSettings({ [ADMIN_PROVIDERS_KEY]: JSON.stringify({ nope: true }) })
+        expect(loadAdminProviders()).toEqual([])
+    })
+
+    it("returns [] on invalid JSON", () => {
+        saveSettings({ [ADMIN_PROVIDERS_KEY]: "{ broken" })
+        expect(loadAdminProviders()).toEqual([])
     })
 })

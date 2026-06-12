@@ -438,6 +438,7 @@
         "hideValue": "隱藏值",
         "removeValue": "移除值",
         "removeValueTitle": "移除已儲存的值",
+        "resetToDefault": "重設為預設",
         "models": "模型",
         "modelsDescription": "面向所有使用者的伺服器端 provider 與模型——無需個人 API 金鑰。當使用者未選擇模型時，使用預設 provider 的第一個模型。",
         "addProviderHint": "新增一個 provider，為所有使用者提供伺服器端模型。",

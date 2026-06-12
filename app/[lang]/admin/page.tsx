@@ -152,6 +152,8 @@ export default function AdminPage() {
         if (!hasDirty) return
         const handler = (e: BeforeUnloadEvent) => {
             e.preventDefault()
+            // Some browsers only show the prompt when returnValue is set
+            e.returnValue = ""
         }
         window.addEventListener("beforeunload", handler)
         return () => window.removeEventListener("beforeunload", handler)

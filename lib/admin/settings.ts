@@ -29,8 +29,18 @@ export function loadSettings(): Record<string, string> {
     try {
         const raw = fs.readFileSync(getSettingsPath(), "utf8")
         const parsed = JSON.parse(raw) as SettingsFile
-        cachedSettings =
-            parsed && typeof parsed.values === "object" ? parsed.values : {}
+        // Keep only string values — a hand-edited or corrupted file could
+        // hold null/arrays/numbers that would otherwise be overlaid onto
+        // process.env and coerce to junk like "[object Object]".
+        const values: Record<string, string> = {}
+        const raw_values =
+            parsed && typeof parsed.values === "object" && parsed.values
+                ? parsed.values
+                : {}
+        for (const [key, value] of Object.entries(raw_values)) {
+            if (typeof value === "string") values[key] = value
+        }
+        cachedSettings = values
     } catch (err: any) {
         if (err?.code !== "ENOENT") {
             console.error("[admin-settings] Failed to read settings file:", err)

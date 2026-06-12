@@ -39,6 +39,31 @@ describe("loadSettings", () => {
         )
         expect(loadSettings()).toEqual({ TEST_ADMIN_VAR: "abc" })
     })
+
+    it("drops non-string values from a corrupted file", () => {
+        fs.writeFileSync(
+            process.env.SETTINGS_FILE!,
+            JSON.stringify({
+                version: 1,
+                values: {
+                    GOOD: "ok",
+                    NUM: 5,
+                    OBJ: { nested: true },
+                    ARR: [1, 2],
+                    NULL: null,
+                },
+            }),
+        )
+        expect(loadSettings()).toEqual({ GOOD: "ok" })
+    })
+
+    it("returns empty object when values is null or an array", () => {
+        fs.writeFileSync(
+            process.env.SETTINGS_FILE!,
+            JSON.stringify({ version: 1, values: null }),
+        )
+        expect(loadSettings()).toEqual({})
+    })
 })
 
 describe("applyToEnv / saveSettings", () => {

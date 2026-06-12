@@ -22,6 +22,9 @@ export interface SettingDef {
     min?: number
     max?: number
     placeholder?: string
+    // Built-in default applied at runtime when the value is unset, so the UI
+    // can reflect actual behavior (e.g. ALLOW_PRIVATE_URLS defaults to "true").
+    default?: string
     // Value is only picked up at process start (module-load readers)
     restartRequired?: boolean
 }
@@ -134,6 +137,8 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
         label: "Allow Private URLs",
         description:
             "Turn off to block requests to private IPs and internal hostnames (SSRF protection).",
+        // Unset means allowed at runtime (ssrf-protection: !== "false")
+        default: "true",
     },
 
     // ── Observability ────────────────────────────────────────────────

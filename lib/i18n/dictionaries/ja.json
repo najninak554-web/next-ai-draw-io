@@ -438,6 +438,7 @@
         "hideValue": "値を非表示",
         "removeValue": "値を削除",
         "removeValueTitle": "保存された値を削除",
+        "resetToDefault": "デフォルトに戻す",
         "models": "モデル",
         "modelsDescription": "全ユーザーが利用できるサーバー側のプロバイダーとモデル——個人の API キーは不要です。ユーザーがモデルを選択しない場合、デフォルトプロバイダーの最初のモデルが使用されます。",
         "addProviderHint": "プロバイダーを追加して、全ユーザーにサーバー側モデルを提供します。",
