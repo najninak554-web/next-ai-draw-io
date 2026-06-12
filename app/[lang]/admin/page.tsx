@@ -1,997 +1,57 @@
 "use client"
 
 import {
-    AlertCircle,
     AlertTriangle,
     Check,
-    Eye,
-    EyeOff,
     Loader2,
     LockKeyhole,
-    Plus,
     ShieldCheck,
-    Star,
-    Trash2,
-    X,
-    Zap,
 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import { ProviderLogo } from "@/components/provider-logo"
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { useDictionary } from "@/hooks/use-dictionary"
 import {
     SETTING_GROUPS,
     SETTINGS_BY_GROUP,
-    type SettingDef,
 } from "@/lib/admin/settings-registry"
 import { getApiEndpoint } from "@/lib/base-path"
-import {
-    FIXED_CRED_PROVIDERS,
-    PROVIDER_INFO,
-    type ProviderName,
-    SUGGESTED_MODELS,
-} from "@/lib/types/model-config"
+import { formatMessage } from "@/lib/i18n/utils"
 import { cn } from "@/lib/utils"
-
-const SESSION_PASSWORD_KEY = "next-ai-draw-io-admin-password"
-
-// ── Shared types ─────────────────────────────────────────────────────
-
-type SecretValue = { isSet: true; hint: string }
-
-function isSecretValue(v: unknown): v is SecretValue {
-    return typeof v === "object" && v !== null && "isSet" in v
-}
-
-interface SettingState {
-    key: string
-    source: "file" | "env" | "default"
-    value: string | SecretValue | null
-}
-
-type SettingsMap = Record<string, SettingState>
-
-// Editable text of a saved setting; secrets have none (write-only)
-function savedTextOf(state: SettingState | undefined): string {
-    return state && !isSecretValue(state.value) ? (state.value ?? "") : ""
-}
-
-// Admin provider in client state. Secret fields hold either a masked
-// marker (unchanged) or a plaintext string (new value).
-interface AdminProvider {
-    id: string
-    provider: ProviderName
-    name?: string
-    apiKey?: string | SecretValue
-    baseUrl?: string
-    awsAccessKeyId?: string | SecretValue
-    awsSecretAccessKey?: string | SecretValue
-    awsRegion?: string
-    vertexApiKey?: string | SecretValue
-    models: string[]
-    isDefault?: boolean
-}
-
-// Provider defined in AI_MODELS_CONFIG / ai-models.json — shown read-only
-interface EnvProvider {
-    name: string
-    provider: ProviderName
-    models: string[]
-    isDefault: boolean
-}
-
-async function adminFetch(path: string, pw: string, init?: RequestInit) {
-    const res = await fetch(getApiEndpoint(path), {
-        ...init,
-        headers: {
-            ...init?.headers,
-            "x-admin-password": pw,
-            ...(init?.body ? { "Content-Type": "application/json" } : {}),
-        },
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-        throw new Error(data.error || `Request failed (${res.status})`)
-    }
-    return data
-}
-
-// ── Small shared UI bits ─────────────────────────────────────────────
-
-function SourceChip({ source }: { source: "file" | "env" | "default" }) {
-    if (source === "default") return null
-    return (
-        <span
-            className={cn(
-                "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                source === "file"
-                    ? "bg-primary/10 text-primary"
-                    : "bg-muted text-muted-foreground",
-            )}
-            title={
-                source === "file"
-                    ? "Set in the admin settings file"
-                    : "Set by an environment variable"
-            }
-        >
-            {source === "file" ? "Saved" : "Env"}
-        </span>
-    )
-}
-
-function RestartBadge() {
-    return (
-        <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
-            Restart Required
-        </span>
-    )
-}
-
-// Secret input: shows masked hint as placeholder, typing replaces.
-// With keepOnEmpty, clearing the field reverts to the stored value
-// ("keep") instead of deleting it — explicit deletion is via the X button.
-function SecretInput({
-    id,
-    value,
-    disabled,
-    keepOnEmpty,
-    onChange,
-}: {
-    id: string
-    value: string | SecretValue | undefined
-    disabled?: boolean
-    keepOnEmpty?: boolean
-    onChange: (value: string | SecretValue) => void
-}) {
-    const [show, setShow] = useState(false)
-    // The stored marker as it was at mount, to revert to on empty
-    const [original] = useState(value)
-    const hadStored = isSecretValue(original)
-    const text = typeof value === "string" ? value : ""
-    const placeholder = isSecretValue(value)
-        ? `Saved (${value.hint}) — type to replace`
-        : "Not set"
-    const handleText = (t: string) => {
-        if (t === "" && keepOnEmpty && hadStored && original) {
-            onChange(original)
-        } else {
-            onChange(t)
-        }
-    }
-    return (
-        <div className="flex items-center gap-1">
-            <Input
-                id={id}
-                type={show ? "text" : "password"}
-                value={text}
-                disabled={disabled}
-                spellCheck={false}
-                autoComplete="off"
-                placeholder={placeholder}
-                className="h-9 font-mono text-xs"
-                onChange={(e) => handleText(e.target.value)}
-            />
-            <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="shrink-0"
-                aria-label={show ? "Hide value" : "Show value"}
-                onClick={() => setShow((s) => !s)}
-            >
-                {show ? (
-                    <EyeOff className="h-4 w-4" aria-hidden="true" />
-                ) : (
-                    <Eye className="h-4 w-4" aria-hidden="true" />
-                )}
-            </Button>
-            {keepOnEmpty && (hadStored || text) && !disabled && (
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="shrink-0"
-                    aria-label="Remove value"
-                    title="Remove the stored value"
-                    onClick={() => onChange("")}
-                >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                </Button>
-            )}
-        </div>
-    )
-}
-
-// ── General settings field (registry-driven) ─────────────────────────
-
-function SettingField({
-    def,
-    state,
-    pendingValue,
-    error,
-    disabled,
-    onChange,
-}: {
-    def: SettingDef
-    state: SettingState | undefined
-    pendingValue: string | null | undefined
-    error?: string
-    disabled: boolean
-    onChange: (value: string | null) => void
-}) {
-    const isDirty = pendingValue !== undefined
-    const source = state?.source ?? "default"
-    const currentValue = isDirty ? (pendingValue ?? "") : savedTextOf(state)
-    const secretState = state && isSecretValue(state.value) ? state.value : null
-
-    const inputId = `setting-${def.key}`
-    const errorId = `${inputId}-error`
-
-    let control: React.ReactNode
-    switch (def.type) {
-        case "boolean":
-            control = (
-                <Switch
-                    id={inputId}
-                    checked={currentValue === "true"}
-                    disabled={disabled}
-                    onCheckedChange={(checked) =>
-                        onChange(checked ? "true" : "false")
-                    }
-                />
-            )
-            break
-        case "enum":
-            control = (
-                <Select
-                    value={currentValue || undefined}
-                    disabled={disabled}
-                    onValueChange={onChange}
-                >
-                    <SelectTrigger id={inputId} className="w-full max-w-xs">
-                        <SelectValue placeholder="Not set" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {def.options?.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                                {opt}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            )
-            break
-        case "secret":
-            control = (
-                <div className="w-full max-w-md">
-                    <SecretInput
-                        id={inputId}
-                        value={
-                            isDirty
-                                ? (pendingValue ?? "")
-                                : (secretState ?? currentValue)
-                        }
-                        disabled={disabled}
-                        onChange={(v) =>
-                            onChange(typeof v === "string" ? v : "")
-                        }
-                    />
-                </div>
-            )
-            break
-        case "number":
-            control = (
-                <Input
-                    id={inputId}
-                    type="number"
-                    inputMode="numeric"
-                    min={def.min}
-                    max={def.max}
-                    value={currentValue}
-                    disabled={disabled}
-                    placeholder={def.placeholder ?? "Not set"}
-                    className="w-full max-w-xs tabular-nums"
-                    aria-invalid={!!error}
-                    aria-describedby={error ? errorId : undefined}
-                    onChange={(e) => onChange(e.target.value)}
-                />
-            )
-            break
-        default:
-            control = (
-                <Input
-                    id={inputId}
-                    type="text"
-                    value={currentValue}
-                    disabled={disabled}
-                    spellCheck={false}
-                    autoComplete="off"
-                    placeholder={def.placeholder ?? "Not set"}
-                    className="w-full max-w-md"
-                    aria-invalid={!!error}
-                    aria-describedby={error ? errorId : undefined}
-                    onChange={(e) => onChange(e.target.value)}
-                />
-            )
-    }
-
-    return (
-        <div className="border-b border-border/60 py-4 last:border-b-0">
-            <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                <Label htmlFor={inputId} className="text-sm font-medium">
-                    {def.label}
-                </Label>
-                <SourceChip source={source} />
-                {def.restartRequired && <RestartBadge />}
-                {isDirty && (
-                    <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">
-                        Modified
-                    </span>
-                )}
-            </div>
-            {def.description && (
-                <p className="mb-2 max-w-prose text-xs text-muted-foreground">
-                    {def.description}
-                </p>
-            )}
-            {control}
-            <p
-                id={errorId}
-                className={cn(
-                    "text-xs text-destructive",
-                    error ? "mt-1.5" : "sr-only",
-                )}
-                aria-live="polite"
-            >
-                {error ?? ""}
-            </p>
-        </div>
-    )
-}
-
-// ── Models section (mirrors the user ModelConfigDialog) ──────────────
-
-function CredField({
-    label,
-    children,
-}: {
-    label: string
-    children: React.ReactNode
-}) {
-    return (
-        <div className="space-y-1.5">
-            <Label className="text-xs font-medium">{label}</Label>
-            {children}
-        </div>
-    )
-}
-
-function ProviderDetail({
-    provider,
-    disabled,
-    password,
-    onUpdate,
-    onDelete,
-}: {
-    provider: AdminProvider
-    disabled: boolean
-    password: string
-    onUpdate: (patch: Partial<AdminProvider>) => void
-    onDelete: () => void
-}) {
-    const [modelInput, setModelInput] = useState("")
-    const [deleteOpen, setDeleteOpen] = useState(false)
-    const [testing, setTesting] = useState<string | null>(null)
-    const [testResults, setTestResults] = useState<
-        Record<string, { ok: boolean; message: string }>
-    >({})
-
-    const info = PROVIDER_INFO[provider.provider]
-    const suggestions = (SUGGESTED_MODELS[provider.provider] || []).filter(
-        (m) => !provider.models.includes(m),
-    )
-
-    const addModel = (modelId: string) => {
-        const trimmed = modelId.trim()
-        if (!trimmed || provider.models.includes(trimmed)) return
-        onUpdate({ models: [...provider.models, trimmed] })
-        setModelInput("")
-    }
-
-    const testModel = async (modelId: string) => {
-        setTesting(modelId)
-        try {
-            const data = await adminFetch("/api/admin/test-model", password, {
-                method: "POST",
-                body: JSON.stringify({ provider, modelId }),
-            })
-            setTestResults((prev) => ({
-                ...prev,
-                [modelId]: data.valid
-                    ? { ok: true, message: `OK (${data.responseTime}ms)` }
-                    : { ok: false, message: data.error || "Failed" },
-            }))
-        } catch (err) {
-            setTestResults((prev) => ({
-                ...prev,
-                [modelId]: {
-                    ok: false,
-                    message: err instanceof Error ? err.message : "Failed",
-                },
-            }))
-        } finally {
-            setTesting(null)
-        }
-    }
-
-    const isBedrock = provider.provider === "bedrock"
-    const isVertex = provider.provider === "vertexai"
-    const hasApiKey = !isBedrock && !isVertex
-
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                    <ProviderLogo
-                        provider={provider.provider}
-                        className="size-5"
-                    />
-                </div>
-                <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold">{info.label}</h3>
-                    <p className="text-xs text-muted-foreground">
-                        {provider.models.length === 0
-                            ? "No models configured"
-                            : `${provider.models.length} model${provider.models.length === 1 ? "" : "s"}`}
-                    </p>
-                </div>
-                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-                    <Star
-                        className={cn(
-                            "h-3.5 w-3.5",
-                            provider.isDefault &&
-                                "fill-amber-400 text-amber-400",
-                        )}
-                        aria-hidden="true"
-                    />
-                    Default
-                    <Switch
-                        checked={!!provider.isDefault}
-                        disabled={disabled}
-                        aria-label="Set as default provider"
-                        onCheckedChange={(checked) =>
-                            onUpdate({ isDefault: checked })
-                        }
-                    />
-                </label>
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={disabled}
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => setDeleteOpen(true)}
-                >
-                    <Trash2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                    Delete
-                </Button>
-            </div>
-
-            {/* Credentials */}
-            <div className="grid gap-4 sm:grid-cols-2">
-                <CredField label="Display Name">
-                    <Input
-                        value={provider.name ?? ""}
-                        disabled={disabled}
-                        placeholder={info.label}
-                        className="h-9"
-                        onChange={(e) => onUpdate({ name: e.target.value })}
-                    />
-                </CredField>
-                {hasApiKey && (
-                    <CredField label="API Key">
-                        <SecretInput
-                            id={`apikey-${provider.id}`}
-                            keepOnEmpty
-                            value={provider.apiKey}
-                            disabled={disabled}
-                            onChange={(v) => onUpdate({ apiKey: v })}
-                        />
-                    </CredField>
-                )}
-                {isVertex && (
-                    <CredField label="API Key (Express Mode)">
-                        <SecretInput
-                            id={`vertexkey-${provider.id}`}
-                            keepOnEmpty
-                            value={provider.vertexApiKey}
-                            disabled={disabled}
-                            onChange={(v) => onUpdate({ vertexApiKey: v })}
-                        />
-                    </CredField>
-                )}
-                {isBedrock ? (
-                    <>
-                        <CredField label="AWS Access Key ID">
-                            <SecretInput
-                                id={`awskey-${provider.id}`}
-                                keepOnEmpty
-                                value={provider.awsAccessKeyId}
-                                disabled={disabled}
-                                onChange={(v) =>
-                                    onUpdate({ awsAccessKeyId: v })
-                                }
-                            />
-                        </CredField>
-                        <CredField label="AWS Secret Access Key">
-                            <SecretInput
-                                id={`awssecret-${provider.id}`}
-                                keepOnEmpty
-                                value={provider.awsSecretAccessKey}
-                                disabled={disabled}
-                                onChange={(v) =>
-                                    onUpdate({ awsSecretAccessKey: v })
-                                }
-                            />
-                        </CredField>
-                        <CredField label="AWS Region">
-                            <Input
-                                value={provider.awsRegion ?? ""}
-                                disabled={disabled}
-                                placeholder="us-west-2"
-                                spellCheck={false}
-                                className="h-9 font-mono text-xs"
-                                onChange={(e) =>
-                                    onUpdate({ awsRegion: e.target.value })
-                                }
-                            />
-                        </CredField>
-                    </>
-                ) : (
-                    <CredField label="Base URL">
-                        <Input
-                            value={provider.baseUrl ?? ""}
-                            disabled={disabled}
-                            placeholder={info.defaultBaseUrl ?? "Default"}
-                            spellCheck={false}
-                            autoComplete="off"
-                            className="h-9 font-mono text-xs"
-                            onChange={(e) =>
-                                onUpdate({ baseUrl: e.target.value })
-                            }
-                        />
-                    </CredField>
-                )}
-            </div>
-
-            {/* Models */}
-            <div>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                        Models
-                    </Label>
-                    <div className="flex items-center gap-1.5">
-                        <Input
-                            value={modelInput}
-                            disabled={disabled}
-                            placeholder="Model ID…"
-                            spellCheck={false}
-                            className="h-8 w-48 font-mono text-xs"
-                            onChange={(e) => setModelInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") addModel(modelInput)
-                            }}
-                        />
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            disabled={disabled || !modelInput.trim()}
-                            aria-label="Add model"
-                            onClick={() => addModel(modelInput)}
-                        >
-                            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                        </Button>
-                        {suggestions.length > 0 && (
-                            <Select
-                                disabled={disabled}
-                                onValueChange={(v) => addModel(v)}
-                            >
-                                <SelectTrigger className="h-8 w-28 text-xs">
-                                    Suggested
-                                </SelectTrigger>
-                                <SelectContent className="max-h-72">
-                                    {suggestions.map((m) => (
-                                        <SelectItem
-                                            key={m}
-                                            value={m}
-                                            className="font-mono text-xs"
-                                        >
-                                            {m}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    </div>
-                </div>
-                <div className="overflow-hidden rounded-lg border">
-                    {provider.models.length === 0 ? (
-                        <p className="p-5 text-center text-sm text-muted-foreground">
-                            Add at least one model to expose this provider to
-                            users.
-                        </p>
-                    ) : (
-                        <ul className="divide-y">
-                            {provider.models.map((modelId, index) => {
-                                const result = testResults[modelId]
-                                return (
-                                    <li
-                                        key={modelId}
-                                        className="flex items-center gap-2 px-3 py-2"
-                                    >
-                                        <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                                            {modelId}
-                                            {provider.isDefault &&
-                                                index === 0 && (
-                                                    <span className="ml-2 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-600 dark:text-amber-400">
-                                                        Default Model
-                                                    </span>
-                                                )}
-                                        </span>
-                                        {result && (
-                                            <span
-                                                className={cn(
-                                                    "flex items-center gap-1 text-xs",
-                                                    result.ok
-                                                        ? "text-green-600 dark:text-green-400"
-                                                        : "text-destructive",
-                                                )}
-                                            >
-                                                {result.ok ? (
-                                                    <Check
-                                                        className="h-3.5 w-3.5"
-                                                        aria-hidden="true"
-                                                    />
-                                                ) : (
-                                                    <AlertCircle
-                                                        className="h-3.5 w-3.5"
-                                                        aria-hidden="true"
-                                                    />
-                                                )}
-                                                <span className="max-w-48 truncate">
-                                                    {result.message}
-                                                </span>
-                                            </span>
-                                        )}
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 px-2 text-xs"
-                                            disabled={
-                                                disabled || testing !== null
-                                            }
-                                            onClick={() =>
-                                                void testModel(modelId)
-                                            }
-                                        >
-                                            {testing === modelId ? (
-                                                <Loader2
-                                                    className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-                                                    aria-hidden="true"
-                                                />
-                                            ) : (
-                                                <Zap
-                                                    className="h-3.5 w-3.5"
-                                                    aria-hidden="true"
-                                                />
-                                            )}
-                                            <span className="ml-1">Test</span>
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7"
-                                            disabled={disabled}
-                                            aria-label={`Remove ${modelId}`}
-                                            onClick={() =>
-                                                onUpdate({
-                                                    models: provider.models.filter(
-                                                        (m) => m !== modelId,
-                                                    ),
-                                                })
-                                            }
-                                        >
-                                            <X
-                                                className="h-3.5 w-3.5"
-                                                aria-hidden="true"
-                                            />
-                                        </Button>
-                                    </li>
-                                )
-                            })}
-                        </ul>
-                    )}
-                </div>
-            </div>
-
-            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>
-                            Delete {provider.name || info.label}?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Its credentials and models will be removed from the
-                            server after you save.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => {
-                                setDeleteOpen(false)
-                                onDelete()
-                            }}
-                        >
-                            Delete
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        </div>
-    )
-}
-
-function ModelsSection({
-    providers,
-    envProviders,
-    disabled,
-    password,
-    onChange,
-}: {
-    providers: AdminProvider[]
-    envProviders: EnvProvider[]
-    disabled: boolean
-    password: string
-    onChange: (providers: AdminProvider[]) => void
-}) {
-    const [selectedId, setSelectedId] = useState<string | null>(
-        providers[0]?.id ?? null,
-    )
-    const selected = providers.find((p) => p.id === selectedId)
-    const selectedEnv = envProviders.find((p) => `env:${p.name}` === selectedId)
-
-    const addProvider = (provider: ProviderName) => {
-        const newProvider: AdminProvider = {
-            id: crypto.randomUUID(),
-            provider,
-            models: [],
-            isDefault: providers.length === 0,
-        }
-        onChange([...providers, newProvider])
-        setSelectedId(newProvider.id)
-    }
-
-    const updateProvider = (id: string, patch: Partial<AdminProvider>) => {
-        onChange(
-            providers.map((p) => {
-                if (p.id !== id) {
-                    // Only one default at a time
-                    return patch.isDefault ? { ...p, isDefault: false } : p
-                }
-                return { ...p, ...patch }
-            }),
-        )
-    }
-
-    const deleteProvider = (id: string) => {
-        const next = providers.filter((p) => p.id !== id)
-        onChange(next)
-        setSelectedId(next[0]?.id ?? null)
-    }
-
-    return (
-        <div className="flex min-h-72 flex-col sm:flex-row">
-            {/* Provider list */}
-            <div className="flex w-full shrink-0 flex-col border-b sm:w-52 sm:border-b-0 sm:border-r">
-                <div className="flex-1 space-y-1 p-2">
-                    {providers.length === 0 && envProviders.length === 0 && (
-                        <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                            Add a provider to offer server-side models to all
-                            users.
-                        </p>
-                    )}
-                    {envProviders.map((p) => (
-                        <button
-                            key={`env:${p.name}`}
-                            type="button"
-                            onClick={() => setSelectedId(`env:${p.name}`)}
-                            className={cn(
-                                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                selectedId === `env:${p.name}` &&
-                                    "bg-muted font-medium",
-                            )}
-                        >
-                            <ProviderLogo provider={p.provider} />
-                            <span className="min-w-0 flex-1 truncate">
-                                {p.name}
-                            </span>
-                            <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                                Env
-                            </span>
-                            {p.isDefault && (
-                                <Star
-                                    className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400"
-                                    aria-label="Default provider"
-                                />
-                            )}
-                        </button>
-                    ))}
-                    {providers.map((p) => (
-                        <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setSelectedId(p.id)}
-                            className={cn(
-                                "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                selectedId === p.id && "bg-muted font-medium",
-                            )}
-                        >
-                            <ProviderLogo provider={p.provider} />
-                            <span className="min-w-0 flex-1 truncate">
-                                {p.name || PROVIDER_INFO[p.provider].label}
-                            </span>
-                            {p.isDefault && (
-                                <Star
-                                    className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400"
-                                    aria-label="Default provider"
-                                />
-                            )}
-                        </button>
-                    ))}
-                </div>
-                <div className="border-t p-2">
-                    <Select
-                        disabled={disabled}
-                        onValueChange={(v) => addProvider(v as ProviderName)}
-                    >
-                        <SelectTrigger className="w-full">
-                            <Plus
-                                className="mr-1 h-4 w-4 text-muted-foreground"
-                                aria-hidden="true"
-                            />
-                            Add Provider
-                        </SelectTrigger>
-                        <SelectContent className="max-h-72">
-                            {(Object.keys(PROVIDER_INFO) as ProviderName[]).map(
-                                (p) => {
-                                    // Global-credential providers already in
-                                    // the env config can't be added here —
-                                    // panel credentials would override theirs
-                                    const envBlocked =
-                                        FIXED_CRED_PROVIDERS.includes(p) &&
-                                        envProviders.some(
-                                            (e) => e.provider === p,
-                                        )
-                                    return (
-                                        <SelectItem
-                                            key={p}
-                                            value={p}
-                                            disabled={envBlocked}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <ProviderLogo provider={p} />
-                                                {PROVIDER_INFO[p].label}
-                                                {envBlocked && (
-                                                    <span className="text-xs text-muted-foreground">
-                                                        (managed via env)
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </SelectItem>
-                                    )
-                                },
-                            )}
-                        </SelectContent>
-                    </Select>
-                </div>
-            </div>
-
-            {/* Detail */}
-            <div className="min-w-0 flex-1 p-4">
-                {selected ? (
-                    <ProviderDetail
-                        key={selected.id}
-                        provider={selected}
-                        disabled={disabled}
-                        password={password}
-                        onUpdate={(patch) => updateProvider(selected.id, patch)}
-                        onDelete={() => deleteProvider(selected.id)}
-                    />
-                ) : selectedEnv ? (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                                <ProviderLogo
-                                    provider={selectedEnv.provider}
-                                    className="size-5"
-                                />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <h3 className="font-semibold">
-                                    {selectedEnv.name}
-                                </h3>
-                                <p className="text-xs text-muted-foreground">
-                                    Defined in AI_MODELS_CONFIG / ai-models.json
-                                    — read-only here. Edit the environment
-                                    configuration to change it.
-                                </p>
-                            </div>
-                        </div>
-                        <div className="overflow-hidden rounded-lg border">
-                            <ul className="divide-y">
-                                {selectedEnv.models.map((modelId, index) => (
-                                    <li
-                                        key={modelId}
-                                        className="flex items-center gap-2 px-3 py-2"
-                                    >
-                                        <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                                            {modelId}
-                                            {selectedEnv.isDefault &&
-                                                index === 0 && (
-                                                    <span className="ml-2 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-600 dark:text-amber-400">
-                                                        Default Model
-                                                    </span>
-                                                )}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    </div>
-                ) : (
-                    <p className="py-12 text-center text-sm text-muted-foreground">
-                        Select or add a provider to configure its credentials
-                        and models.
-                    </p>
-                )}
-            </div>
-        </div>
-    )
-}
+import {
+    type AdminProvider,
+    adminFetch,
+    type EnvProvider,
+    isSecretValue,
+    SESSION_PASSWORD_KEY,
+    type SettingState,
+    type SettingsMap,
+    savedTextOf,
+} from "./admin-shared"
+import { ModelsSection } from "./models-section"
+import { SettingField } from "./setting-field"
 
 // ── Page ─────────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-    { id: "models", title: "Models" },
-    ...SETTING_GROUPS.map((g) => ({ id: g.id, title: g.title })),
-]
+const NAV_GROUP_IDS = ["models", ...SETTING_GROUPS.map((g) => g.id)]
 
 export default function AdminPage() {
+    const dict = useDictionary()
+    // Localized group title/description, keyed by group id
+    const groupText = (id: string) =>
+        (
+            dict.admin.groups as Record<
+                string,
+                { title: string; description: string } | undefined
+            >
+        )[id]
+    const navItems = NAV_GROUP_IDS.map((id) => ({
+        id,
+        title:
+            id === "models" ? dict.admin.models : (groupText(id)?.title ?? id),
+    }))
     const [password, setPassword] = useState("")
     const [authedPassword, setAuthedPassword] = useState<string | null>(null)
     const [authError, setAuthError] = useState("")
@@ -1071,13 +131,13 @@ export default function AdminPage() {
                 sessionStorage.setItem(SESSION_PASSWORD_KEY, pw)
             } catch (err) {
                 setAuthError(
-                    err instanceof Error ? err.message : "Login failed",
+                    err instanceof Error ? err.message : dict.admin.loginFailed,
                 )
             } finally {
                 setAuthLoading(false)
             }
         },
-        [applySettingsResponse, applyProvidersResponse],
+        [applySettingsResponse, applyProvidersResponse, dict],
     )
 
     // Restore session on mount
@@ -1112,8 +172,8 @@ export default function AdminPage() {
             },
             { rootMargin: "-10% 0px -50% 0px" },
         )
-        for (const item of NAV_ITEMS) {
-            const el = document.getElementById(item.id)
+        for (const id of NAV_GROUP_IDS) {
+            const el = document.getElementById(id)
             if (el) observer.observe(el)
         }
         return () => observer.disconnect()
@@ -1206,7 +266,7 @@ export default function AdminPage() {
                         setErrors(data.errors)
                         const firstKey = Object.keys(data.errors)[0]
                         document.getElementById(`setting-${firstKey}`)?.focus()
-                        throw new Error("Some settings are invalid.")
+                        throw new Error(dict.admin.invalidSettings)
                     }
                     throw new Error(
                         data.error || `Request failed (${res.status})`,
@@ -1217,16 +277,14 @@ export default function AdminPage() {
             }
             setSaveMessage({
                 ok: true,
-                text: "Settings saved. Changes apply immediately.",
+                text: dict.admin.saved,
             })
             setTimeout(() => setSaveMessage(null), 4000)
         } catch (err) {
             setSaveMessage({
                 ok: false,
                 text:
-                    err instanceof Error
-                        ? err.message
-                        : "Save failed. Check your connection and try again.",
+                    err instanceof Error ? err.message : dict.admin.saveFailed,
             })
         } finally {
             setSaving(false)
@@ -1239,6 +297,7 @@ export default function AdminPage() {
         dirtyCount,
         applySettingsResponse,
         applyProvidersResponse,
+        dict,
     ])
 
     // ── Login screen ─────────────────────────────────────────────────
@@ -1258,15 +317,16 @@ export default function AdminPage() {
                             aria-hidden="true"
                         />
                         <h1 className="text-lg font-semibold">
-                            Admin Settings
+                            {dict.admin.title}
                         </h1>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                        Enter the admin password (the ADMIN_PASSWORD environment
-                        variable) to manage server settings.
+                        {dict.admin.loginPrompt}
                     </p>
                     <div className="space-y-1.5">
-                        <Label htmlFor="admin-password">Password</Label>
+                        <Label htmlFor="admin-password">
+                            {dict.admin.password}
+                        </Label>
                         <Input
                             id="admin-password"
                             name="admin-password"
@@ -1297,10 +357,10 @@ export default function AdminPage() {
                                     className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none"
                                     aria-hidden="true"
                                 />
-                                Signing In…
+                                {dict.admin.signingIn}
                             </>
                         ) : (
-                            "Sign In"
+                            dict.admin.signIn
                         )}
                     </Button>
                 </form>
@@ -1319,11 +379,11 @@ export default function AdminPage() {
                             aria-hidden="true"
                         />
                         <h1 className="text-lg font-semibold">
-                            Admin Settings
+                            {dict.admin.title}
                         </h1>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        File overrides env · env overrides defaults
+                        {dict.admin.precedence}
                     </p>
                 </div>
             </header>
@@ -1335,21 +395,18 @@ export default function AdminPage() {
                             className="h-4 w-4 shrink-0"
                             aria-hidden="true"
                         />
-                        The settings file is not writable on this deployment
-                        (serverless platforms have no persistent disk). Settings
-                        are shown read-only — configure via environment
-                        variables instead.
+                        {dict.admin.notWritable}
                     </div>
                 </div>
             )}
 
             <div className="mx-auto flex max-w-6xl gap-8 px-4 py-6">
                 <nav
-                    aria-label="Setting groups"
+                    aria-label={dict.admin.settingGroups}
                     className="sticky top-20 hidden h-fit w-44 shrink-0 md:block"
                 >
                     <ul className="space-y-1">
-                        {NAV_ITEMS.map((item) => (
+                        {navItems.map((item) => (
                             <li key={item.id}>
                                 <a
                                     href={`#${item.id}`}
@@ -1379,13 +436,10 @@ export default function AdminPage() {
                             id="models"
                             className="scroll-mt-20 text-base font-semibold"
                         >
-                            Models
+                            {dict.admin.models}
                         </h2>
                         <p className="mb-3 mt-1 text-sm text-muted-foreground text-pretty">
-                            Server-side providers and models available to all
-                            users — no personal API key needed. The default
-                            provider's first model is used when users don't pick
-                            one.
+                            {dict.admin.modelsDescription}
                         </p>
                         <div className="overflow-hidden rounded-lg border bg-card">
                             <ModelsSection
@@ -1407,6 +461,8 @@ export default function AdminPage() {
                         const groupOff =
                             group.toggleable && !enabledGroups[group.id]
                         const fieldsDisabled = !writable || saving || !!groupOff
+                        const gt = groupText(group.id)
+                        const title = gt?.title ?? group.title
                         return (
                             <section
                                 key={group.id}
@@ -1418,7 +474,7 @@ export default function AdminPage() {
                                         id={group.id}
                                         className="scroll-mt-20 text-base font-semibold"
                                     >
-                                        {group.title}
+                                        {title}
                                     </h2>
                                     {group.toggleable && (
                                         <label
@@ -1430,14 +486,17 @@ export default function AdminPage() {
                                             )}
                                         >
                                             {enabledGroups[group.id]
-                                                ? "Enabled"
-                                                : "Disabled"}
+                                                ? dict.admin.enabled
+                                                : dict.admin.disabled}
                                             <Switch
                                                 checked={
                                                     !!enabledGroups[group.id]
                                                 }
                                                 disabled={!writable || saving}
-                                                aria-label={`Enable ${group.title}`}
+                                                aria-label={formatMessage(
+                                                    dict.admin.enableGroup,
+                                                    { group: title },
+                                                )}
                                                 onCheckedChange={(checked) =>
                                                     handleGroupToggle(
                                                         group.id,
@@ -1449,7 +508,7 @@ export default function AdminPage() {
                                     )}
                                 </div>
                                 <p className="mb-3 mt-1 text-sm text-muted-foreground text-pretty">
-                                    {group.description}
+                                    {gt?.description ?? group.description}
                                 </p>
                                 <div
                                     className={cn(
@@ -1505,7 +564,7 @@ export default function AdminPage() {
                             {saveMessage && !saveMessage.ok
                                 ? saveMessage.text
                                 : dirtyCount > 0
-                                  ? "Unsaved changes"
+                                  ? dict.admin.unsavedChanges
                                   : saveMessage?.text}
                         </p>
                         {dirtyCount > 0 && (
@@ -1520,7 +579,7 @@ export default function AdminPage() {
                                         setProviders(JSON.parse(savedProviders))
                                     }}
                                 >
-                                    Discard
+                                    {dict.admin.discard}
                                 </Button>
                                 <Button
                                     type="button"
@@ -1533,10 +592,10 @@ export default function AdminPage() {
                                                 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none"
                                                 aria-hidden="true"
                                             />
-                                            Saving…
+                                            {dict.admin.saving}
                                         </>
                                     ) : (
-                                        "Save Changes"
+                                        dict.admin.saveChanges
                                     )}
                                 </Button>
                             </div>
