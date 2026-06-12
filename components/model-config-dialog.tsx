@@ -8,18 +8,20 @@ import {
     Eye,
     EyeOff,
     Key,
-    Link2,
     Loader2,
     Plus,
     Server,
     Settings2,
     Sparkles,
-    Tag,
     Trash2,
     X,
     Zap,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import {
+    ProviderCredentialsFields,
+    type SecretField,
+} from "@/components/provider-credentials-fields"
 import { ProviderLogo } from "@/components/provider-logo"
 import {
     AlertDialog,
@@ -343,6 +345,104 @@ export function ModelConfigDialog({
         return provider.name || PROVIDER_INFO[provider.provider].label
     }
 
+    // Inline Test button + error, shared across credential layouts. Disabled
+    // until the relevant credentials are present.
+    const renderTestButton = (canValidate: boolean) => (
+        <div className="flex items-center gap-2">
+            <Button
+                variant={validationStatus === "success" ? "outline" : "default"}
+                size="sm"
+                onClick={handleValidate}
+                disabled={!canValidate || validationStatus === "validating"}
+                className={cn(
+                    "h-9 px-4",
+                    validationStatus === "success" &&
+                        "text-success border-success/30 bg-success-muted hover:bg-success-muted",
+                )}
+            >
+                {validationStatus === "validating" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                ) : validationStatus === "success" ? (
+                    <>
+                        <Check className="h-4 w-4 mr-1.5 animate-check-pop" />
+                        {dict.modelConfig.verified}
+                    </>
+                ) : (
+                    dict.modelConfig.test
+                )}
+            </Button>
+            {validationStatus === "error" && validationError && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                    <X className="h-3 w-3" />
+                    {validationError}
+                </p>
+            )}
+        </div>
+    )
+
+    // Plaintext secret input with show/hide toggle (the user dialog stores
+    // keys client-side, so values are shown directly — unlike the masked
+    // admin panel). The primary key field carries the inline Test button.
+    const renderProviderSecret = (field: SecretField, id: string) => {
+        if (!selectedProvider) return null
+        const value = (selectedProvider[field] as string | undefined) ?? ""
+        // The "primary" credential sits beside the Test button; for Bedrock
+        // the test lives below the region, so its inputs have no inline test.
+        const isBedrock = selectedProvider.provider === "bedrock"
+        const withInlineTest =
+            !isBedrock && (field === "apiKey" || field === "vertexApiKey")
+        const canValidate =
+            field === "vertexApiKey"
+                ? !!selectedProvider.vertexApiKey
+                : selectedProvider.provider === "ollama" ||
+                  !!selectedProvider.apiKey
+        const input = (
+            <div className="relative flex-1">
+                <Input
+                    id={id}
+                    type={showApiKey ? "text" : "password"}
+                    value={value}
+                    onChange={(e) =>
+                        handleProviderUpdate(field, e.target.value)
+                    }
+                    placeholder={
+                        field === "awsSecretAccessKey"
+                            ? dict.modelConfig.enterSecretKey
+                            : field === "awsAccessKeyId"
+                              ? "AKIA..."
+                              : dict.modelConfig.enterApiKey
+                    }
+                    className="h-9 pr-10 font-mono text-xs"
+                />
+                <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    aria-label={
+                        showApiKey
+                            ? dict.modelConfig.hideValue
+                            : dict.modelConfig.showValue
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+                >
+                    {showApiKey ? (
+                        <EyeOff className="h-4 w-4" />
+                    ) : (
+                        <Eye className="h-4 w-4" />
+                    )}
+                </button>
+            </div>
+        )
+        if (!withInlineTest) return input
+        return (
+            <div className="space-y-2">
+                <div className="flex gap-2">
+                    {input}
+                    {renderTestButton(canValidate)}
+                </div>
+            </div>
+        )
+    }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-4xl h-[80vh] max-h-[800px] overflow-hidden flex flex-col gap-0 p-0">
@@ -543,681 +643,45 @@ export function ModelConfigDialog({
                                         icon={Settings2}
                                     >
                                         <ConfigCard>
-                                            {/* Display Name */}
-                                            <div className="space-y-2">
-                                                <Label
-                                                    htmlFor="provider-name"
-                                                    className="text-xs font-medium flex items-center gap-1.5"
-                                                >
-                                                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                                                    {
-                                                        dict.modelConfig
-                                                            .displayName
-                                                    }
-                                                </Label>
-                                                <Input
-                                                    id="provider-name"
-                                                    value={
-                                                        selectedProvider.name ||
-                                                        ""
-                                                    }
-                                                    onChange={(e) =>
-                                                        handleProviderUpdate(
-                                                            "name",
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    placeholder={
-                                                        PROVIDER_INFO[
-                                                            selectedProvider
-                                                                .provider
-                                                        ].label
-                                                    }
-                                                    className="h-9"
-                                                />
-                                            </div>
-
-                                            {/* Credentials - different for Bedrock vs other providers */}
-                                            {selectedProvider.provider ===
-                                            "bedrock" ? (
-                                                <>
-                                                    {/* AWS Access Key ID */}
-                                                    <div className="space-y-2">
-                                                        <Label
-                                                            htmlFor="aws-access-key-id"
-                                                            className="text-xs font-medium flex items-center gap-1.5"
-                                                        >
-                                                            <Key className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            {
-                                                                dict.modelConfig
-                                                                    .awsAccessKeyId
-                                                            }
-                                                        </Label>
-                                                        <Input
-                                                            id="aws-access-key-id"
-                                                            type={
-                                                                showApiKey
-                                                                    ? "text"
-                                                                    : "password"
-                                                            }
-                                                            value={
-                                                                selectedProvider.awsAccessKeyId ||
-                                                                ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                handleProviderUpdate(
-                                                                    "awsAccessKeyId",
-                                                                    e.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            placeholder="AKIA..."
-                                                            className="h-9 font-mono text-xs"
-                                                        />
-                                                    </div>
-
-                                                    {/* AWS Secret Access Key */}
-                                                    <div className="space-y-2">
-                                                        <Label
-                                                            htmlFor="aws-secret-access-key"
-                                                            className="text-xs font-medium flex items-center gap-1.5"
-                                                        >
-                                                            <Key className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            {
-                                                                dict.modelConfig
-                                                                    .awsSecretAccessKey
-                                                            }
-                                                        </Label>
-                                                        <div className="relative">
-                                                            <Input
-                                                                id="aws-secret-access-key"
-                                                                type={
-                                                                    showApiKey
-                                                                        ? "text"
-                                                                        : "password"
-                                                                }
-                                                                value={
-                                                                    selectedProvider.awsSecretAccessKey ||
-                                                                    ""
-                                                                }
-                                                                onChange={(e) =>
-                                                                    handleProviderUpdate(
-                                                                        "awsSecretAccessKey",
-                                                                        e.target
-                                                                            .value,
-                                                                    )
-                                                                }
-                                                                placeholder={
-                                                                    dict
-                                                                        .modelConfig
-                                                                        .enterSecretKey
-                                                                }
-                                                                className="h-9 pr-10 font-mono text-xs"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    setShowApiKey(
-                                                                        !showApiKey,
-                                                                    )
-                                                                }
-                                                                aria-label={
-                                                                    showApiKey
-                                                                        ? "Hide secret access key"
-                                                                        : "Show secret access key"
-                                                                }
-                                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
-                                                            >
-                                                                {showApiKey ? (
-                                                                    <EyeOff className="h-4 w-4" />
-                                                                ) : (
-                                                                    <Eye className="h-4 w-4" />
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* AWS Region */}
-                                                    <div className="space-y-2">
-                                                        <Label
-                                                            htmlFor="aws-region"
-                                                            className="text-xs font-medium flex items-center gap-1.5"
-                                                        >
-                                                            <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            {
-                                                                dict.modelConfig
-                                                                    .awsRegion
-                                                            }
-                                                        </Label>
-                                                        <Select
-                                                            value={
-                                                                selectedProvider.awsRegion ||
-                                                                ""
-                                                            }
-                                                            onValueChange={(
-                                                                v,
-                                                            ) =>
-                                                                handleProviderUpdate(
-                                                                    "awsRegion",
-                                                                    v,
-                                                                )
-                                                            }
-                                                        >
-                                                            <SelectTrigger className="h-9 font-mono text-xs hover:bg-accent">
-                                                                <SelectValue
-                                                                    placeholder={
-                                                                        dict
-                                                                            .modelConfig
-                                                                            .selectRegion
-                                                                    }
-                                                                />
-                                                            </SelectTrigger>
-                                                            <SelectContent className="max-h-64">
-                                                                <SelectItem value="us-east-1">
-                                                                    us-east-1
-                                                                    (N.
-                                                                    Virginia)
-                                                                </SelectItem>
-                                                                <SelectItem value="us-east-2">
-                                                                    us-east-2
-                                                                    (Ohio)
-                                                                </SelectItem>
-                                                                <SelectItem value="us-west-2">
-                                                                    us-west-2
-                                                                    (Oregon)
-                                                                </SelectItem>
-                                                                <SelectItem value="eu-west-1">
-                                                                    eu-west-1
-                                                                    (Ireland)
-                                                                </SelectItem>
-                                                                <SelectItem value="eu-west-2">
-                                                                    eu-west-2
-                                                                    (London)
-                                                                </SelectItem>
-                                                                <SelectItem value="eu-west-3">
-                                                                    eu-west-3
-                                                                    (Paris)
-                                                                </SelectItem>
-                                                                <SelectItem value="eu-central-1">
-                                                                    eu-central-1
-                                                                    (Frankfurt)
-                                                                </SelectItem>
-                                                                <SelectItem value="ap-south-1">
-                                                                    ap-south-1
-                                                                    (Mumbai)
-                                                                </SelectItem>
-                                                                <SelectItem value="ap-northeast-1">
-                                                                    ap-northeast-1
-                                                                    (Tokyo)
-                                                                </SelectItem>
-                                                                <SelectItem value="ap-northeast-2">
-                                                                    ap-northeast-2
-                                                                    (Seoul)
-                                                                </SelectItem>
-                                                                <SelectItem value="ap-southeast-1">
-                                                                    ap-southeast-1
-                                                                    (Singapore)
-                                                                </SelectItem>
-                                                                <SelectItem value="ap-southeast-2">
-                                                                    ap-southeast-2
-                                                                    (Sydney)
-                                                                </SelectItem>
-                                                                <SelectItem value="sa-east-1">
-                                                                    sa-east-1
-                                                                    (São Paulo)
-                                                                </SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-
-                                                    {/* Test Button for Bedrock */}
-                                                    <div className="flex items-center gap-2">
-                                                        <Button
-                                                            variant={
-                                                                validationStatus ===
-                                                                "success"
-                                                                    ? "outline"
-                                                                    : "default"
-                                                            }
-                                                            size="sm"
-                                                            onClick={
-                                                                handleValidate
-                                                            }
-                                                            disabled={
-                                                                !selectedProvider.awsAccessKeyId ||
-                                                                !selectedProvider.awsSecretAccessKey ||
-                                                                !selectedProvider.awsRegion ||
-                                                                validationStatus ===
-                                                                    "validating"
-                                                            }
-                                                            className={cn(
-                                                                "h-9 px-4",
-                                                                validationStatus ===
-                                                                    "success" &&
-                                                                    "text-success border-success/30 bg-success-muted hover:bg-success-muted",
-                                                            )}
-                                                        >
-                                                            {validationStatus ===
-                                                            "validating" ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                            ) : validationStatus ===
-                                                              "success" ? (
-                                                                <>
-                                                                    <Check className="h-4 w-4 mr-1.5 animate-check-pop" />
-                                                                    {
-                                                                        dict
-                                                                            .modelConfig
-                                                                            .verified
-                                                                    }
-                                                                </>
-                                                            ) : (
-                                                                dict.modelConfig
-                                                                    .test
-                                                            )}
-                                                        </Button>
-                                                        {validationStatus ===
-                                                            "error" &&
-                                                            validationError && (
-                                                                <p className="text-xs text-destructive flex items-center gap-1">
-                                                                    <X className="h-3 w-3" />
-                                                                    {
-                                                                        validationError
-                                                                    }
-                                                                </p>
-                                                            )}
-                                                    </div>
-                                                </>
-                                            ) : selectedProvider.provider ===
-                                              "vertexai" ? (
-                                                <>
-                                                    {/* Vertex AI API Key */}
-                                                    <div className="space-y-2">
-                                                        <Label
-                                                            htmlFor="vertex-api-key"
-                                                            className="text-xs font-medium flex items-center gap-1.5"
-                                                        >
-                                                            <Key className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            API Key
-                                                        </Label>
-                                                        <div className="flex gap-2">
-                                                            <div className="relative flex-1">
-                                                                <Input
-                                                                    id="vertex-api-key"
-                                                                    type={
-                                                                        showApiKey
-                                                                            ? "text"
-                                                                            : "password"
-                                                                    }
-                                                                    value={
-                                                                        selectedProvider.vertexApiKey ||
-                                                                        ""
-                                                                    }
-                                                                    onChange={(
-                                                                        e,
-                                                                    ) =>
-                                                                        handleProviderUpdate(
-                                                                            "vertexApiKey",
-                                                                            e
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
-                                                                    placeholder="Enter your Vertex AI API key"
-                                                                    className="h-9 pr-10 font-mono text-xs"
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        setShowApiKey(
-                                                                            !showApiKey,
-                                                                        )
-                                                                    }
-                                                                    aria-label={
-                                                                        showApiKey
-                                                                            ? "Hide API key"
-                                                                            : "Show API key"
-                                                                    }
-                                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
-                                                                >
-                                                                    {showApiKey ? (
-                                                                        <EyeOff className="h-4 w-4" />
-                                                                    ) : (
-                                                                        <Eye className="h-4 w-4" />
-                                                                    )}
-                                                                </button>
-                                                            </div>
-                                                            <Button
-                                                                variant={
-                                                                    validationStatus ===
-                                                                    "success"
-                                                                        ? "outline"
-                                                                        : "default"
-                                                                }
-                                                                size="sm"
-                                                                onClick={
-                                                                    handleValidate
-                                                                }
-                                                                disabled={
-                                                                    !selectedProvider.vertexApiKey ||
-                                                                    validationStatus ===
-                                                                        "validating"
-                                                                }
-                                                                className={cn(
-                                                                    "h-9 px-4",
-                                                                    validationStatus ===
-                                                                        "success" &&
-                                                                        "text-success border-success/30 bg-success-muted hover:bg-success-muted",
-                                                                )}
-                                                            >
-                                                                {validationStatus ===
-                                                                "validating" ? (
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                                ) : validationStatus ===
-                                                                  "success" ? (
-                                                                    <>
-                                                                        <Check className="h-4 w-4 mr-1.5 animate-check-pop" />
-                                                                        {
-                                                                            dict
-                                                                                .modelConfig
-                                                                                .verified
-                                                                        }
-                                                                    </>
-                                                                ) : (
-                                                                    dict
-                                                                        .modelConfig
-                                                                        .test
-                                                                )}
-                                                            </Button>
-                                                        </div>
-                                                        {validationStatus ===
-                                                            "error" &&
-                                                            validationError && (
-                                                                <p className="text-xs text-destructive flex items-center gap-1">
-                                                                    <X className="h-3 w-3" />
-                                                                    {
-                                                                        validationError
-                                                                    }
-                                                                </p>
-                                                            )}
-                                                    </div>
-
-                                                    {/* Base URL (optional) */}
-                                                    <div className="space-y-2">
-                                                        <Label
-                                                            htmlFor="vertex-base-url"
-                                                            className="text-xs font-medium flex items-center gap-1.5"
-                                                        >
-                                                            <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            {formatMessage(
-                                                                dict.modelConfig
-                                                                    .baseUrlWithExample,
-                                                                {
-                                                                    example:
-                                                                        PROVIDER_INFO[
-                                                                            selectedProvider
-                                                                                .provider
-                                                                        ]
-                                                                            .defaultBaseUrl ||
-                                                                        "https://api.example.com/v1",
-                                                                },
-                                                            )}
-                                                        </Label>
-                                                        <Input
-                                                            id="vertex-base-url"
-                                                            value={
-                                                                selectedProvider.baseUrl ||
-                                                                ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                handleProviderUpdate(
-                                                                    "baseUrl",
-                                                                    e.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            placeholder="Custom endpoint URL"
-                                                            className="h-9 font-mono text-xs"
-                                                        />
-                                                    </div>
-                                                </>
-                                            ) : selectedProvider.provider ===
-                                              "edgeone" ? (
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <Button
-                                                            variant={
-                                                                validationStatus ===
-                                                                "success"
-                                                                    ? "outline"
-                                                                    : "default"
-                                                            }
-                                                            size="sm"
-                                                            onClick={
-                                                                handleValidate
-                                                            }
-                                                            disabled={
-                                                                validationStatus ===
-                                                                "validating"
-                                                            }
-                                                            className={cn(
-                                                                "h-9 px-4",
-                                                                validationStatus ===
-                                                                    "success" &&
-                                                                    "text-success border-success/30 bg-success-muted hover:bg-success-muted",
-                                                            )}
-                                                        >
-                                                            {validationStatus ===
-                                                            "validating" ? (
-                                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                            ) : validationStatus ===
-                                                              "success" ? (
-                                                                <>
-                                                                    <Check className="h-4 w-4 mr-1.5" />
-                                                                    {
-                                                                        dict
-                                                                            .modelConfig
-                                                                            .verified
-                                                                    }
-                                                                </>
-                                                            ) : (
-                                                                dict.modelConfig
-                                                                    .test
-                                                            )}
-                                                        </Button>
-                                                        {validationStatus ===
-                                                            "error" &&
-                                                            validationError && (
-                                                                <p className="text-xs text-destructive flex items-center gap-1">
-                                                                    <X className="h-3 w-3" />
-                                                                    {
-                                                                        validationError
-                                                                    }
-                                                                </p>
-                                                            )}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    {/* API Key */}
-                                                    <div className="space-y-2">
-                                                        <Label
-                                                            htmlFor="api-key"
-                                                            className="text-xs font-medium flex items-center gap-1.5"
-                                                        >
-                                                            <Key className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            {
-                                                                dict.modelConfig
-                                                                    .apiKey
-                                                            }
-                                                            {selectedProvider.provider ===
-                                                                "ollama" &&
-                                                                ` ${dict.modelConfig.optional}`}
-                                                        </Label>
-                                                        <div className="flex gap-2">
-                                                            <div className="relative flex-1">
-                                                                <Input
-                                                                    id="api-key"
-                                                                    type={
-                                                                        showApiKey
-                                                                            ? "text"
-                                                                            : "password"
-                                                                    }
-                                                                    value={
-                                                                        selectedProvider.apiKey
-                                                                    }
-                                                                    onChange={(
-                                                                        e,
-                                                                    ) =>
-                                                                        handleProviderUpdate(
-                                                                            "apiKey",
-                                                                            e
-                                                                                .target
-                                                                                .value,
-                                                                        )
-                                                                    }
-                                                                    placeholder={
-                                                                        dict
-                                                                            .modelConfig
-                                                                            .enterApiKey
-                                                                    }
-                                                                    className="h-9 pr-10 font-mono text-xs"
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        setShowApiKey(
-                                                                            !showApiKey,
-                                                                        )
-                                                                    }
-                                                                    aria-label={
-                                                                        showApiKey
-                                                                            ? "Hide API key"
-                                                                            : "Show API key"
-                                                                    }
-                                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
-                                                                >
-                                                                    {showApiKey ? (
-                                                                        <EyeOff className="h-4 w-4" />
-                                                                    ) : (
-                                                                        <Eye className="h-4 w-4" />
-                                                                    )}
-                                                                </button>
-                                                            </div>
-                                                            <Button
-                                                                variant={
-                                                                    validationStatus ===
-                                                                    "success"
-                                                                        ? "outline"
-                                                                        : "default"
-                                                                }
-                                                                size="sm"
-                                                                onClick={
-                                                                    handleValidate
-                                                                }
-                                                                disabled={
-                                                                    (selectedProvider.provider !==
-                                                                        "ollama" &&
-                                                                        !selectedProvider.apiKey) ||
-                                                                    validationStatus ===
-                                                                        "validating"
-                                                                }
-                                                                className={cn(
-                                                                    "h-9 px-4",
-                                                                    validationStatus ===
-                                                                        "success" &&
-                                                                        "text-success border-success/30 bg-success-muted hover:bg-success-muted",
-                                                                )}
-                                                            >
-                                                                {validationStatus ===
-                                                                "validating" ? (
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                                ) : validationStatus ===
-                                                                  "success" ? (
-                                                                    <>
-                                                                        <Check className="h-4 w-4 mr-1.5 animate-check-pop" />
-                                                                        {
-                                                                            dict
-                                                                                .modelConfig
-                                                                                .verified
-                                                                        }
-                                                                    </>
-                                                                ) : (
-                                                                    dict
-                                                                        .modelConfig
-                                                                        .test
-                                                                )}
-                                                            </Button>
-                                                        </div>
-                                                        {validationStatus ===
-                                                            "error" &&
-                                                            validationError && (
-                                                                <p className="text-xs text-destructive flex items-center gap-1">
-                                                                    <X className="h-3 w-3" />
-                                                                    {
-                                                                        validationError
-                                                                    }
-                                                                </p>
-                                                            )}
-                                                    </div>
-
-                                                    {/* Base URL */}
-                                                    <div className="space-y-2">
-                                                        <Label
-                                                            htmlFor="base-url"
-                                                            className="text-xs font-medium flex items-center gap-1.5"
-                                                        >
-                                                            <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                                                            {formatMessage(
-                                                                dict.modelConfig
-                                                                    .baseUrlWithExample,
-                                                                {
-                                                                    example:
-                                                                        PROVIDER_INFO[
-                                                                            selectedProvider
-                                                                                .provider
-                                                                        ]
-                                                                            .defaultBaseUrl ||
-                                                                        "https://api.example.com/v1",
-                                                                },
-                                                            )}
-                                                        </Label>
-                                                        <Input
-                                                            id="base-url"
-                                                            value={
-                                                                selectedProvider.baseUrl ||
-                                                                ""
-                                                            }
-                                                            onChange={(e) =>
-                                                                handleProviderUpdate(
-                                                                    "baseUrl",
-                                                                    e.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            placeholder={
-                                                                PROVIDER_INFO[
-                                                                    selectedProvider
-                                                                        .provider
-                                                                ]
-                                                                    .defaultBaseUrl ||
-                                                                dict.modelConfig
-                                                                    .customEndpoint
-                                                            }
-                                                            className="h-9 rounded-xl font-mono text-xs"
-                                                        />
-                                                        {selectedProvider.provider ===
-                                                            "minimax" && (
-                                                            <p className="text-xs text-muted-foreground">
-                                                                {
-                                                                    dict
-                                                                        .modelConfig
-                                                                        .minimaxBaseUrlHint
-                                                                }
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                </>
-                                            )}
+                                            <ProviderCredentialsFields
+                                                provider={
+                                                    selectedProvider.provider
+                                                }
+                                                name={selectedProvider.name}
+                                                baseUrl={
+                                                    selectedProvider.baseUrl
+                                                }
+                                                awsRegion={
+                                                    selectedProvider.awsRegion
+                                                }
+                                                onChange={(field, value) =>
+                                                    handleProviderUpdate(
+                                                        field,
+                                                        value,
+                                                    )
+                                                }
+                                                renderSecret={({ field, id }) =>
+                                                    renderProviderSecret(
+                                                        field,
+                                                        id,
+                                                    )
+                                                }
+                                                footer={
+                                                    selectedProvider.provider ===
+                                                    "bedrock"
+                                                        ? renderTestButton(
+                                                              !!selectedProvider.awsAccessKeyId &&
+                                                                  !!selectedProvider.awsSecretAccessKey &&
+                                                                  !!selectedProvider.awsRegion,
+                                                          )
+                                                        : selectedProvider.provider ===
+                                                            "edgeone"
+                                                          ? renderTestButton(
+                                                                true,
+                                                            )
+                                                          : undefined
+                                                }
+                                            />
                                         </ConfigCard>
                                     </ConfigSection>
 
