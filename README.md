@@ -228,21 +228,9 @@ Administrators can configure multiple server-side models that are available to a
 
 ### Admin Panel
 
-Instead of hand-editing `.env`, you can manage server settings in a web admin panel:
+Set the `ADMIN_PASSWORD` environment variable and visit `/admin` to manage server settings (models, access codes, features, observability, quota) from a web panel instead of hand-editing `.env`.
 
-1. Set the `ADMIN_PASSWORD` environment variable (leave unset to disable the panel).
-2. Visit `/admin` and sign in.
-3. In the Models section, add providers with their API keys and model lists — the same UI as the in-app model settings. Saved models become server-side models available to all users; they are stored in `data/settings.json` and merged with any `AI_MODELS_CONFIG` / `ai-models.json` from your environment at request time (the panel does not modify those env files).
-4. Other sections cover access codes, generation parameters, features, observability, and quota. Saved settings are written to `data/settings.json` and apply immediately — no restart needed (a few settings such as Langfuse and DynamoDB are marked "Restart Required").
-
-Precedence: settings saved in the panel override environment variables, which override built-in defaults. Removing a saved value falls back to the environment variable.
-
-Notes:
-
--   Secrets are stored in plaintext in `data/settings.json` (file mode 600). Keep the file private.
--   On serverless platforms (Vercel, Cloudflare Workers) there is no persistent disk, so the panel is read-only — configure via environment variables there.
--   With Docker, the `data/` directory is persisted via the volume in `docker-compose.yml`.
--   `NEXT_PUBLIC_*` variables are baked in at build time and cannot be changed in the panel.
+📖 **[Admin Panel Guide](./docs/en/admin-panel.md)** — setup, precedence rules, and notes.
 
 **Model Requirements**: This task requires strong model capabilities for generating long-form text with strict formatting constraints (draw.io XML). Recommended models include Claude Sonnet 4.5, GPT-5.1, Gemini 3 Pro, and DeepSeek V3.2/R1.
 
