@@ -5,7 +5,6 @@
  * Token counting utilities are in a separate file (token-counter.ts) to avoid
  * WebAssembly issues with Next.js server-side rendering.
  */
-are
 // Constitutive Modeling Extension for Geomechanics Workflows
 const CONSTITUTIVE_MODELING_EXTENSION = `
 
