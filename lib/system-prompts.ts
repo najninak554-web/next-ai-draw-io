@@ -409,7 +409,7 @@ This routes the edge to the RIGHT of all shapes (x=750), then enters Main from t
 **Key principle:** When connecting distant nodes diagonally, route along the PERIMETER of the diagram, not through the middle where other shapes exist.`
 
 // Extended system prompt = DEFAULT + EXTENDED_ADDITIONS
-export const EXTENDED_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + EXTENDED_ADDITIONS
+export const export const EXTENDED_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + CONSTITUTIVE_MODELING_EXTENSION + EXTENDED_ADDITIONS
 
 // Model patterns that require extended prompt (4000 token cache minimum)
 // These patterns match Opus 4.5 and Haiku 4.5 model IDs
